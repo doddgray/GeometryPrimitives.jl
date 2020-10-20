@@ -94,6 +94,7 @@ signmatrix(b::Box{3}) = SMatrix{3,4}(1,1,1, -1,1,1, 1,-1,1, 1,1,-1)
 
 function bounds(b::Box)
     A = inv(b.p) .* b.r'
-    m = maximum(abs.(A * signmatrix(b)), dims=Val(2))[:,1] # extrema of all 2^N corners of the box
+    # m = maximum(abs.(A * signmatrix(b)), dims=Val(2))[:,1] # extrema of all 2^N corners of the box
+    m = maximum(abs.(A * signmatrix(b)), dims=2)[:,1] # extrema of all 2^N corners of the box
     return (b.c-m,b.c+m)
 end
