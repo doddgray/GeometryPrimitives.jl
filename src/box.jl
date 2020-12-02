@@ -22,7 +22,7 @@ Box(c::SVector{N,<:Real},
     d::SVector{N,<:Real},
     axes::SMatrix{N,N,<:Real}=SMatrix{N,N,Float64}(I),
     data::D=nothing) where {N,D} =
-    Box{N,N*N,D}(c, 0.5d, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))), data)
+    Box{N,N*N,D}(c, 0.5d, inv(axes ./ sqrt.(sum(abs2,axes,dims=1))), data)
 
 Box(c::AbstractVector{<:Real},  # center of box
     d::AbstractVector{<:Real},  # size of box in axis directions
@@ -48,13 +48,13 @@ function surfpt_nearby(x::SVector{N,<:Real}, b::Box{N}) where {N}
     # Below, the rows of n are the unit normals to the faces of the box.  Appropriate signs
     # will be multiplied later.  (Note that the signs will be such that the rows of n are
     # always outward directions, even if x is inside the box.)
-    n = (b.p ./ sqrt.(sum(abs2,b.p,dims=Val(2))[:,1]))  # b.p normalized in row direction
+    n = (b.p ./ sqrt.(sum(abs2,b.p,dims=2)[:,1]))  # b.p normalized in row direction
 
     # Below, θ[i], the angle between ax[:,i] and n[i,:], is always acute (i.e, cosθ .≥ 0),
     # because the diagonal entries of b.p * ax are positive (= 1) and the diagonal entries
     # of n * ax are the scaled version of the diagonal entries of b.p * ax with positive
     # scale factors.
-    cosθ = sum(ax.*n', dims=Val(1))[1,:]  # equivalent to diag(n*ax)
+    cosθ = sum(ax.*n', dims=1)[1,:]  # equivalent to diag(n*ax)
     # cosθ = diag(n*ax)  # faster than SVector(ntuple(i -> ax[:,i]⋅n[i,:], Val(N)))
     # @assert all(cosθ .≥ 0)
 
@@ -94,7 +94,7 @@ signmatrix(b::Box{3}) = SMatrix{3,4}(1,1,1, -1,1,1, 1,-1,1, 1,1,-1)
 
 function bounds(b::Box)
     A = inv(b.p) .* b.r'
-    # m = maximum(abs.(A * signmatrix(b)), dims=Val(2))[:,1] # extrema of all 2^N corners of the box
+    # m = maximum(abs.(A * signmatrix(b)), dims=2)[:,1] # extrema of all 2^N corners of the box
     m = maximum(abs.(A * signmatrix(b)), dims=2)[:,1] # extrema of all 2^N corners of the box
     return (b.c-m,b.c+m)
 end
