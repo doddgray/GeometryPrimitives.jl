@@ -105,8 +105,8 @@ end
 translate(s::Polygon{K,K2,D}, ∆::SVector{2,<:Real}) where {K,K2,D} = Polygon{K,K2,D}(s.v .+ transpose(∆), s.n, s.data)
 
 function bounds(s::Polygon)
-    l = minimum(s.v, dims=Val(1))[1,:]
-    u = maximum(s.v, dims=Val(1))[1,:]
+    l = minimum(s.v, dims=1)[1,:]
+    u = maximum(s.v, dims=1)[1,:]
 
     return (l, u)
 end

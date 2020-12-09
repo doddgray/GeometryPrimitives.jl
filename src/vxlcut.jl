@@ -5,7 +5,7 @@
 
 export volfrac
 
-using Zygote
+using Zygote: ignore, @ignore, dropgrad
 
 const X, Y, Z = 1, 2, 3
 const XYZ, YZX, ZXY = (X,Y,Z), (Y,Z,X), (Z,X,Y)
@@ -184,14 +184,14 @@ function rvol_gensect(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Real
     if !isinf(rmax)
         tmax = 1 - 1/rmax
         rvol_core0 = 1 + tmax + tmax^2
-        if rmid > 1 
+        if rmid > 1
             tmid = 1 - 1/rmid
             rvol_core1 = rvol_core0 - ( rmax * tmid^3 )
         else
             rvol_core1 = rvol_core0
         end
 
-        if rmin > 1 
+        if rmin > 1
             tmin = 1 - 1/rmin
             rvol_core = rvol_core1 - ( rmax * tmin^3 )
         else
@@ -234,7 +234,7 @@ function volfrac(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Real}, r�
 
     # nr₀ = dot(@Zygote.showgrad(nout),@Zygote.showgrad(r₀))
     # cbits, n_on = corner_bits(@Zygote.showgrad(vxl), @Zygote.showgrad(nout), @Zygote.showgrad(nr₀))
-    
+
     # nr₀ = dot(@show(nout),@show(r₀))
     # cbits, n_on = corner_bits(@show(vxl), @show(nout), @show(nr₀))
     # n_in = count_ones(@show(cbits))  # number of corners contained
@@ -246,7 +246,7 @@ function volfrac(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Real}, r�
     # println("cbits: $(cbits), [$(typeof(cbits))]")
     # println("n_on: $(n_on), [$(typeof(n_on))]")
     # println("n_in: $(n_in), [$(typeof(n_in))]")
-    
+
 
     if n_in == 8  # voxel is inside half-space
         # println("path 1: voxel is inside half-space")
@@ -272,6 +272,11 @@ function volfrac(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Real}, r�
 end
 
 volfrac(vxl::NTuple{2,SVector{2,<:Number}}, nout::SVector{2,<:Real}, r₀::SVector{2,<:Real}) =
+    volfrac((SVector(vxl[N][1],vxl[N][2],0), SVector(vxl[P][1],vxl[P][2],1)),
+            SVector(nout[1], nout[2], 0),
+            SVector(r₀[1], r₀[2], 0))
+
+volfrac(vxl::NTuple{2,AbstractVector{Float64}}, nout::AbstractVector{Float64}, r₀::AbstractVector{Float64}) =
     volfrac((SVector(vxl[N][1],vxl[N][2],0), SVector(vxl[P][1],vxl[P][2],1)),
             SVector(nout[1], nout[2], 0),
             SVector(r₀[1], r₀[2], 0))
