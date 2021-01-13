@@ -6,16 +6,25 @@ export regpoly, isosceles
 # Assume the followings for the polygon represented by Polygon:
 # - The polygon is convex.
 # - The vertices are listed in the counter-clockwise order around the origin.
+
 mutable struct Polygon{K,K2,D} <: Shape{2,4,D}  # K2 = 2K
     v::SMatrix{K,2,Float64,K2}  # vertices
     n::SMatrix{K,2,Float64,K2}  # direction normals to edges
     data::D  # auxiliary data
     Polygon{K,K2,D}(v,n,data) where {K,K2,D} = new(v,n,data)  # suppress default outer constructor
 end
+# mutable struct Polygon{K,K2,D} <: Shape{2,4,D}  # K2 = 2K
+#     v::SMatrix{K,2,Float64}  # vertices
+#     n::SMatrix{K,2,Float64}  # direction normals to edges
+#     data::D  # auxiliary data
+#     Polygon{K,K2,D}(v,n,data) where {K,K2,D} = new(v,n,data)  # suppress default outer constructor
+# end
 
-function Polygon(v::SMatrix{K,2,<:Real}, data::D=nothing) where {K,D}
+# function Polygon(v::SMatrix{K,2,<:Real}, data::D=nothing) where {K,D}
+function Polygon(v::AbstractMatrix{<:Real}, data::D=nothing) where D
+    K = size(v,1);
     # Sort the vertices in the counter-clockwise direction
-    w = v .- mean(v, dims=Val(1))  # v in center-of-mass coordinates
+    w = v .- mean(v, dims=1)  # v in center-of-mass coordinates
     ϕ = mod.(atan.(w[:,2], w[:,1]), 2π)  # SVector{K}: angle of vertices between 0 and 2π; `%` does not work for negative angle
     if !issorted(ϕ)
         # Do this only when ϕ is not sorted, because the following uses allocations.
@@ -24,7 +33,8 @@ function Polygon(v::SMatrix{K,2,<:Real}, data::D=nothing) where {K,D}
     end
 
     # Calculate the increases in angle between neighboring edges.
-    ∆v = vcat(diff(v, dims=Val(1)), SMatrix{1,2}(v[1,:]-v[end,:]))  # SMatrix{K,2}: edge directions
+    # ∆v = vcat(diff(v, dims=1), SMatrix{1,2}(v[1,:]-v[end,:]))  # SMatrix{K,2}: edge directions
+    ∆v = vcat(diff(v, dims=1), transpose(v[1,:]-v[end,:]))
     ∆z = ∆v[:,1] + im * ∆v[:,2]  # SVector{K}: edge directions as complex numbers
     icurr = ntuple(identity, Val(K-1))
     inext = ntuple(x->x+1, Val(K-1))
@@ -33,13 +43,15 @@ function Polygon(v::SMatrix{K,2,<:Real}, data::D=nothing) where {K,D}
     # Check all the angle increases are positive.  If they aren't, the polygon is not convex.
     all(∆ϕ .> 0) || throw("v = $v should represent vertices of convex polygon.")
 
-    n = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
-    n = n ./ hypot.(n[:,1],n[:,2])  # normalize
+    n0 = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
+    n = n0 ./ hypot.(n0[:,1],n0[:,2])  # normalize
+    # n = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
+    # n = n ./ hypot.(n[:,1],n[:,2])  # normalize
 
-    return Polygon{K,2K,D}(v,n,data)
+    return Polygon{K,2K,D}((SMatrix{K,2,Float64}(v)),(SMatrix{K,2,Float64}(n)),data) # Polygon{K,2K,D}(v,n,data)
 end
 
-Polygon(v::AbstractMatrix{<:Real}, data=nothing) = (K = size(v,1); Polygon(SMatrix{K,2}(v), data))
+# Polygon(v::AbstractMatrix{<:Real}, data=nothing) = (K = size(v,1); Polygon(SMatrix{K,2}(v), data))
 
 Base.:(==)(s1::Polygon, s2::Polygon) = s1.v==s2.v && s1.n==s2.n && s1.data==s2.data  # assume sorted v
 Base.isapprox(s1::Polygon, s2::Polygon) = s1.v≈s2.v && s1.n≈s2.n && s1.data==s2.data  # assume sorted v
@@ -105,9 +117,12 @@ end
 translate(s::Polygon{K,K2,D}, ∆::SVector{2,<:Real}) where {K,K2,D} = Polygon{K,K2,D}(s.v .+ transpose(∆), s.n, s.data)
 
 function bounds(s::Polygon)
-    l = minimum(s.v, dims=1)[1,:]
-    u = maximum(s.v, dims=1)[1,:]
-
+    # Box bounds original:          m = maximum(abs.(A * signmatrix(b)), dims=2)[:,1] # extrema of all 2^N corners of the box
+    # Box bounds zygote friendly:   m = maximum(abs.(Array((inv(b.p) .* b.r') * signmatrix(b))), dims=2)[:,1] # extrema of all 2^N corners of the box
+    # l = minimum(s.v, dims=1)[1,:]
+    # u = maximum(s.v, dims=1)[1,:]
+    l = SVector{2,Float64}(minimum(Array(s.v), dims=1)[1,:])
+    u = SVector{2,Float64}(maximum(Array(s.v), dims=1)[1,:])
     return (l, u)
 end
 
