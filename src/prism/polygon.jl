@@ -7,9 +7,9 @@ export regpoly, isosceles
 # - The polygon is convex.
 # - The vertices are listed in the counter-clockwise order around the origin.
 
-mutable struct Polygon{K,K2,D} <: Shape{2,4,D}  # K2 = 2K
-    v::SMatrix{K,2,Float64,K2}  # vertices
-    n::SMatrix{K,2,Float64,K2}  # direction normals to edges
+mutable struct Polygon{K,K2,D,T} <: Shape{2,4,D,T}  # K2 = 2K
+    v::SMatrix{K,2,T,K2}  # vertices
+    n::SMatrix{K,2,T,K2}  # direction normals to edges
     data::D  # auxiliary data
     Polygon{K,K2,D}(v,n,data) where {K,K2,D} = new(v,n,data)  # suppress default outer constructor
 end
@@ -21,7 +21,7 @@ end
 # end
 
 # function Polygon(v::SMatrix{K,2,<:Real}, data::D=nothing) where {K,D}
-function Polygon(v::AbstractMatrix{<:Real}, data::D=nothing) where D
+function Polygon(v::AbstractMatrix{T}, data::D=nothing) where {D,T<:Real}
     K = size(v,1);
     # Sort the vertices in the counter-clockwise direction
     w = v .- mean(v, dims=1)  # v in center-of-mass coordinates
@@ -48,7 +48,7 @@ function Polygon(v::AbstractMatrix{<:Real}, data::D=nothing) where D
     # n = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
     # n = n ./ hypot.(n[:,1],n[:,2])  # normalize
 
-    return Polygon{K,2K,D}((SMatrix{K,2,Float64}(v)),(SMatrix{K,2,Float64}(n)),data) # Polygon{K,2K,D}(v,n,data)
+    return Polygon{K,2K,D,T}((SMatrix{K,2,T}(v)),(SMatrix{K,2,T}(n)),data) # Polygon{K,2K,D}(v,n,data)
 end
 
 # Polygon(v::AbstractMatrix{<:Real}, data=nothing) = (K = size(v,1); Polygon(SMatrix{K,2}(v), data))
@@ -59,14 +59,14 @@ Base.hash(s::Polygon, h::UInt) = hash(s.v, hash(s.n, hash(s.data, hash(:Polygon,
 
 Base.in(x::SVector{2,<:Real}, s::Polygon) = all(sum(s.n .* (x' .- s.v), dims=Val(2)) .≤ 0)
 
-function surfpt_nearby(x::SVector{2,<:Real}, s::Polygon{K}) where {K}
+function surfpt_nearby(x::SVector{2,T}, s::Polygon{K}) where {K,T<:Real}
     # Calculate the signed distances from x to edge lines.
     ∆xe = sum(s.n .* (x' .- s.v), dims=Val(2))[:,1]  # SVector{K}: values of equations of edge lines
     abs∆xe = abs.(∆xe)  # SVector{K}
 
     # Determine if x is outside of edges, inclusive.
     sz = abs.((-)(bounds(s)...))  # SVector{2}
-    onbnd = abs∆xe .≤ Base.rtoldefault(Float64) * max(sz.data...)  # SVector{K}
+    onbnd = abs∆xe .≤ Base.rtoldefault(T) * max(sz.data...)  # SVector{K}
     isout = (∆xe.>0) .| onbnd  # SVector{K}
 
     # For x inside the polygon, it is easy to find the closest surface point: we can simply
@@ -114,15 +114,15 @@ function surfpt_nearby(x::SVector{2,<:Real}, s::Polygon{K}) where {K}
     return surf, nout
 end
 
-translate(s::Polygon{K,K2,D}, ∆::SVector{2,<:Real}) where {K,K2,D} = Polygon{K,K2,D}(s.v .+ transpose(∆), s.n, s.data)
+translate(s::Polygon{K,K2,D}, ∆::SVector{2,T}) where {K,K2,D,T<:Real} = Polygon{K,K2,D,T}(s.v .+ transpose(∆), s.n, s.data)
 
-function bounds(s::Polygon)
+function bounds(s::Polygon{K,K2,D,T}) where {K,K2,D,T<:Real}
     # Box bounds original:          m = maximum(abs.(A * signmatrix(b)), dims=2)[:,1] # extrema of all 2^N corners of the box
     # Box bounds zygote friendly:   m = maximum(abs.(Array((inv(b.p) .* b.r') * signmatrix(b))), dims=2)[:,1] # extrema of all 2^N corners of the box
     # l = minimum(s.v, dims=1)[1,:]
     # u = maximum(s.v, dims=1)[1,:]
-    l = SVector{2,Float64}(minimum(Array(s.v), dims=1)[1,:])
-    u = SVector{2,Float64}(maximum(Array(s.v), dims=1)[1,:])
+    l = SVector{2,T}(minimum(Array(s.v), dims=1)[1,:])
+    u = SVector{2,T}(maximum(Array(s.v), dims=1)[1,:])
     return (l, u)
 end
 
@@ -131,8 +131,8 @@ end
 function regpoly(::Val{K},  # number of vertices
                  r::Real,  # distance between center and each vertex
                  θ::Real=π/2,  # angle from +x-direction towards first vertex; π/2 corresponds to +y-direction
-                 c::SVector{2,<:Real}=SVector(0.0,0.0),  # center location
-                 data=nothing) where {K}
+                 c::SVector{2,T}=SVector(0.0,0.0),  # center location
+                 data=nothing) where {K,T<:Real}
     ∆θ = 2π / K
 
     θs = θ .+ ∆θ .* SVector(ntuple(k->k-1, Val(K)))  # SVector{K}: angles of vertices
@@ -170,7 +170,7 @@ isosceles(base::NTuple{2,AbstractVector{<:Real}},  # (end point 1, end point 2):
 
 
 #= Polygonal prism =#
-const PolygonalPrism{K,K2} = Prism{Polygon{K,K2,Nothing}}
+const PolygonalPrism{K,K2,T} = Prism{Polygon{K,K2,Nothing,T}}
 
 # Below, if we called PolygonalPrism(c, ...) in the function body, it would call the inner
 # constructor Prism{Polygon{K,K2,Nothing}}(c, ...) because PolygonalPrism = Prism{Polygon{K,K2,Nothing}},

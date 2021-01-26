@@ -32,23 +32,23 @@
 
 export Prism
 
-mutable struct Prism{B<:Shape{2},D} <: Shape{3,9,D}
-    c::SVector{3,Float64}  # prism center
+mutable struct Prism{B<:Shape{2},D,T} <: Shape{3,9,D,T}
+    c::SVector{3,T}  # prism center
     b::B  # base shape described in prism coordinates (i.e, when translating prism, do not need to translate b)
-    h2::Float64  # height * 0.5
-    p::SMatrix{3,3,Float64,9}  # projection matrix to prism coordinates; must be orthonormal (see surfpt_nearby)
+    h2::T  # height * 0.5
+    p::SMatrix{3,3,T,9}  # projection matrix to prism coordinates; must be orthonormal (see surfpt_nearby)
     data::D  # auxiliary data
-    Prism{B,D}(c,b,h2,p,data) where {B,D} = new(c,b,h2,p,data)  # suppress default outer constructor
+    Prism{B,D,T}(c,b,h2,p,data) where {B,D,T<:Real} = new(c,b,h2,p,data)  # suppress default outer constructor
 end
 
-Prism(c::SVector{3,<:Real},
+Prism(c::SVector{3,T},
       b::B,
       h::Real=Inf,
-      axes::SMatrix{3,3,<:Real}=SMatrix{3,3,Float64}(I),  # columns are axes vectors: first two columns span prism base, and last column is prism axis
-      data::D=nothing) where {B<:Shape{2},D} =
-    Prism{B,D}(c, b, 0.5h, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))), data)
+      axes::SMatrix{3,3,T}=SMatrix{3,3,T}(I),  # columns are axes vectors: first two columns span prism base, and last column is prism axis
+      data::D=nothing) where {B<:Shape{2},D,T<:Real} =
+    Prism{B,D,T}(c, b, 0.5h, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))), data)
 
-Prism(c::AbstractVector{<:Real}, b::Shape{2}, h::Real=Inf, axes::AbstractMatrix{<:Real}=Matrix{Float64}(I,length(c),length(c)), data=nothing) =
+Prism(c::AbstractVector{T}, b::Shape{2}, h::Real=Inf, axes::AbstractMatrix{<:Real}=Matrix{T}(I,length(c),length(c)), data=nothing) where T<:Real =
     Prism(SVector{3}(c), b, h, SMatrix{3,3}(axes), data)
 
 Base.:(==)(s1::Prism, s2::Prism) = s1.c==s2.c && s1.b==s2.b && s1.h2==s2.h2 && s1.p==s2.p && s1.data==s2.data
@@ -63,7 +63,7 @@ function Base.in(x::SVector{3,<:Real}, s::Prism)
     return abs(ya) ≤ s.h2 && yb ∈ s.b
 end
 
-function surfpt_nearby(x::SVector{3,<:Real}, s::Prism)
+function surfpt_nearby(x::SVector{3,T}, s::Prism) where {T<:Real}
     ax = inv(s.p)  # prism axes: columns are not only unit vectors, but also orthogonal
 
     y = s.p * (x - s.c)  # x in prism coordinates
@@ -74,7 +74,7 @@ function surfpt_nearby(x::SVector{3,<:Real}, s::Prism)
     abs∆a = abs(s.h2 - la)  # scalar: distance between x and base point closest to x
     surfa = SVector(yb.data..., copysign(s.h2, ya))  # SVector{3}: coordinates of base point closest to x
     nouta = SVector(0.0, 0.0, copysign(1.0, ya))  # SVector{3}: outward direction normal at surfa
-    onbnda = abs∆a ≤ Base.rtoldefault(Float64) * s.h2
+    onbnda = abs∆a ≤ Base.rtoldefault(T) * s.h2
     isouta = s.h2<la || onbnda
 
     surfb2, noutb2 = surfpt_nearby(yb, s.b)  # (SVector{2}, SVector{2}): side point closest to x and outward direction normal to side there
@@ -82,7 +82,7 @@ function surfpt_nearby(x::SVector{3,<:Real}, s::Prism)
     surfb = SVector(surfb2.data..., ya)  # SVector{3}: coordinates of side point closest to x
     noutb = SVector(noutb2.data..., 0.0)  # SVector{3}: outward direction normal to side surface at surfb
     basesize = abs.((-)(bounds(s.b)...))  # SVector{2}: size of bounding rectancle of base
-    onbndb = abs∆b ≤ Base.rtoldefault(Float64) * max(basesize.data...)
+    onbndb = abs∆b ≤ Base.rtoldefault(T) * max(basesize.data...)
     isoutb = yb∉s.b || onbndb
 
     if isouta && isoutb  # x outside in both axis and base dimensions

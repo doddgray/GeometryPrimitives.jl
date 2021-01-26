@@ -10,24 +10,24 @@ export Box
 # and the component must be 1.  This also means that each row of Box.p is orthogononal to
 # two box axes, and therefore normal to the face spanned by the two box axes.  (Note that
 # the rows of Box.p are not unit normals to the faces, becuase they are not unit vectors.)
-mutable struct Box{N,N²,D} <: Shape{N,N²,D}
-    c::SVector{N,Float64}  # center of box
-    r::SVector{N,Float64}  # "radii" (semi-axes) in axis directions
-    p::SMatrix{N,N,Float64,N²}  # projection matrix to box coordinates
+mutable struct Box{N,N²,D,T} <: Shape{N,N²,D,T}
+    c::SVector{N,T}  # center of box
+    r::SVector{N,T}  # "radii" (semi-axes) in axis directions
+    p::SMatrix{N,N,T,N²}  # projection matrix to box coordinates
     data::D  # auxiliary data
-    Box{N,N²,D}(c,r,p,data) where {N,N²,D} = new(c,r,p,data)  # suppress default outer constructor
+    Box{N,N²,D,T}(c,r,p,data) where {N,N²,D,T<:Real} = new(c,r,p,data)  # suppress default outer constructor
 end
 
-Box(c::SVector{N,<:Real},
-    d::SVector{N,<:Real},
-    axes::SMatrix{N,N,<:Real}=SMatrix{N,N,Float64}(I),
-    data::D=nothing) where {N,D} =
-    Box{N,N*N,D}(c, 0.5d, inv(axes ./ sqrt.(sum(abs2,axes,dims=1))), data)
+Box(c::SVector{N,T},
+    d::SVector{N,T},
+    axes::SMatrix{N,N,T}=SMatrix{N,N,T}(I),
+    data::D=nothing) where {N,D,T<:Real} =
+    Box{N,N*N,D,T}(c, 0.5d, inv(axes ./ sqrt.(sum(abs2,axes,dims=1))), data)
 
-Box(c::AbstractVector{<:Real},  # center of box
-    d::AbstractVector{<:Real},  # size of box in axis directions
-    axes::AbstractMatrix{<:Real}=Matrix{Float64}(I,length(c),length(c)),  # columns are axes vectors (each being parallel to two sets of faces in 3D)
-    data=nothing) =
+Box(c::AbstractVector{T},  # center of box
+    d::AbstractVector{T},  # size of box in axis directions
+    axes::AbstractMatrix{T}=Matrix{T}(I,length(c),length(c)),  # columns are axes vectors (each being parallel to two sets of faces in 3D)
+    data=nothing) where T<:Real =
     (N = length(c); Box(SVector{N}(c), SVector{N}(d), SMatrix{N,N}(axes), data))
 
 Base.:(==)(b1::Box, b2::Box) = b1.c==b2.c && b1.r==b2.r && b1.p==b2.p && b1.data==b2.data
@@ -42,7 +42,7 @@ function Base.in(x::SVector{N,<:Real}, b::Box{N}) where {N}
     return true
 end
 
-function surfpt_nearby(x::SVector{N,<:Real}, b::Box{N}) where {N}
+function surfpt_nearby(x::SVector{N,T}, b::Box{N}) where {N,T<:Real}
     ax = inv(b.p)  # axes: columns are unit vectors
 
     # Below, the rows of n are the unit normals to the faces of the box.  Appropriate signs
@@ -61,7 +61,7 @@ function surfpt_nearby(x::SVector{N,<:Real}, b::Box{N}) where {N}
     d = b.p * (x - b.c)
     n = n .* copysign.(1.0,d)  # operation returns SMatrix (reason for leaving n untransposed)
     absd = abs.(d)
-    onbnd = abs.(b.r.-absd) .≤ Base.rtoldefault(Float64) .* b.r  # basically b.r .≈ absd but faster
+    onbnd = abs.(b.r.-absd) .≤ Base.rtoldefault(T) .* b.r  # basically b.r .≈ absd but faster
     isout = (b.r.<absd) .| onbnd
     ∆ = (b.r .- absd) .* cosθ  # entries can be negative
     if count(isout) == 0  # x strictly inside box; ∆ all positive
@@ -86,7 +86,7 @@ function surfpt_nearby(x::SVector{N,<:Real}, b::Box{N}) where {N}
     return x+∆x, nout
 end
 
-translate(b::Box{N,N²,D}, ∆::SVector{N,<:Real}) where {N,N²,D} = Box{N,N²,D}(b.c+∆, b.r, b.p, b.data)
+translate(b::Box{N,N²,D}, ∆::SVector{N,T}) where {N,N²,D,T<:Real} = Box{N,N²,D,T}(b.c+∆, b.r, b.p, b.data)
 
 signmatrix(b::Box{1}) = SMatrix{1,1}(1)
 signmatrix(b::Box{2}) = SMatrix{2,2}(1,1, -1,1)

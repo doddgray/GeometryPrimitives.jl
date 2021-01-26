@@ -14,14 +14,14 @@ because a given shape may be in both branches of the tree.  (Normally,
 K-D trees are used for nearest-neighbor searches for a list of *points*,
 not shapes of nonzero size.)
 """
-mutable struct KDTree{K,S<:Shape{K}}
+mutable struct KDTree{K,S<:Shape{K,N²,D,T}}
     s::Vector{S}
     ix::Int
-    x::Float64
+    x::T
     left::KDTree{K,S}  # shapes ≤ x in coordinate ix
     right::KDTree{K,S} # shapes > x in coordinate ix
-    KDTree{K,S}(s::AbstractVector{S}) where {K,S<:Shape{K}} = new(s, 0)
-    function KDTree{K,S}(ix::Integer, x::Real, left::KDTree{K,S}, right::KDTree{K,S}) where {K,S<:Shape{K}}
+    KDTree{K,S}(s::AbstractVector{S}) where {K,N²,D,T<:Real,S<:Shape{K,N²,D,T}} = new(s, 0)
+    function KDTree{K,S}(ix::Integer, x::T, left::KDTree{K,S}, right::KDTree{K,S}) where {K,N²,D,T<:Real,S<:Shape{K,N²,D,T}}
         1 ≤ ix ≤ K || throw(BoundsError())
         new(S[], ix, x, left, right)
     end

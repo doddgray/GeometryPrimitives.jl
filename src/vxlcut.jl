@@ -276,7 +276,7 @@ volfrac(vxl::NTuple{2,SVector{2,<:Number}}, nout::SVector{2,<:Real}, r₀::SVect
             SVector(nout[1], nout[2], 0),
             SVector(r₀[1], r₀[2], 0))
 
-volfrac(vxl::NTuple{2,AbstractVector{Float64}}, nout::AbstractVector{Float64}, r₀::AbstractVector{Float64}) =
+volfrac(vxl::NTuple{2,AbstractVector{<:Real}}, nout::AbstractVector{<:Real}, r₀::AbstractVector{<:Real}) =
     volfrac((SVector(vxl[N][1],vxl[N][2],0), SVector(vxl[P][1],vxl[P][2],1)),
             SVector(nout[1], nout[2], 0),
             SVector(r₀[1], r₀[2], 0))

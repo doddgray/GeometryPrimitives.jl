@@ -2,13 +2,13 @@ export Sector, SectoralPrism
 
 #= Sector (for a base shape) =#
 
-mutable struct Sector{D} <: Shape{2,4,D}  # M = 2K
-    c::SVector{2,Float64}  # center of circle
-    r::Float64  # radius of circle
-    ϕ₀::Float64  # center angle bisecting sector: -π ≤ ϕ₀ < π  (π excluded)
-    ∆ϕ2::Float64  # "radius" in angle dimension: 0 ≤ ∆ϕ2 ≤ π (sector spans from ϕ₀ - ∆ϕ2 to ϕ₀ + ∆ϕ2)
+mutable struct Sector{D,T} <: Shape{2,4,D,T}  # M = 2K
+    c::SVector{2,T}  # center of circle
+    r::T  # radius of circle
+    ϕ₀::T  # center angle bisecting sector: -π ≤ ϕ₀ < π  (π excluded)
+    ∆ϕ2::T  # "radius" in angle dimension: 0 ≤ ∆ϕ2 ≤ π (sector spans from ϕ₀ - ∆ϕ2 to ϕ₀ + ∆ϕ2)
     data::D  # auxiliary data
-    Sector{D}(c,r,ϕ₀,∆ϕ,data) where {D} = new(c,r,ϕ₀,∆ϕ,data)  # suppress default outer constructor
+    Sector{D,T}(c,r,ϕ₀,∆ϕ,data) where {D,T<:Real} = new(c,r,ϕ₀,∆ϕ,data)  # suppress default outer constructor
 end
 
 function Sector(c::SVector{2,<:Real}, r::Real, ϕ::Real, ∆ϕ::Real, data::D=nothing) where {D}
@@ -42,7 +42,7 @@ function Base.in(x::SVector{2,<:Real}, s::Sector)
     return ld ≤ s.r && abs(distangle(ϕ, s.ϕ₀)) ≤ s.∆ϕ2
 end
 
-function surfpt_nearby(x::SVector{2,<:Real}, s::Sector)
+function surfpt_nearby(x::SVector{2,<:Real}, s::Sector{D,T}) where T<:Real
     # Basically mimic the same function for Prism, but proceeds in the (ρ,ϕ) domain.
     d = x - s.c
     ld = norm(d)
@@ -50,7 +50,7 @@ function surfpt_nearby(x::SVector{2,<:Real}, s::Sector)
     # Calculate the closest point in the ρ dimension and outward normal direciton there.
     r2 = s.r / 2
     ρ = ld - r2  # positive if closer to arc; negative if closer to center
-    d̂ = ld ≤ Base.rtoldefault(Float64) * r2  ? SVector(cos(s.ϕ₀),sin(s.ϕ₀)) : normalize(d)
+    d̂ = ld ≤ Base.rtoldefault(T) * r2  ? SVector(cos(s.ϕ₀),sin(s.ϕ₀)) : normalize(d)
 
     surfρ = ρ<0 ? 0.0 : s.r  # scalar: closest point to x between center and perimeter point
     noutρ = copysign(1.0,ρ) * d̂  # SVector{2}: outward direction normal at surfρ
@@ -58,7 +58,7 @@ function surfpt_nearby(x::SVector{2,<:Real}, s::Sector)
     absρ = abs(ρ)
     abs∆ρ = abs(r2 - absρ)  # radial distance between x and either center or perimeter, whichever closer to x
 
-    onbndρ = abs∆ρ ≤ Base.rtoldefault(Float64) * r2  # basically r2 ≈ ρ but faster
+    onbndρ = abs∆ρ ≤ Base.rtoldefault(T) * r2  # basically r2 ≈ ρ but faster
     isoutρ = (r2 < absρ) || onbndρ
 
     # Calculate the closest point in the ϕ dimension and outward normal direciton there.
@@ -76,7 +76,7 @@ function surfpt_nearby(x::SVector{2,<:Real}, s::Sector)
     absϕ = abs(ϕ)
     abs∆ϕ = abs(s.∆ϕ2 - absϕ)  # angular distance between x and closer side of sector
 
-    onbndϕ = abs∆ϕ ≤ Base.rtoldefault(Float64) * s.∆ϕ2  # basically ∆ϕ2 ≈ ϕ but faster
+    onbndϕ = abs∆ϕ ≤ Base.rtoldefault(T) * s.∆ϕ2  # basically ∆ϕ2 ≈ ϕ but faster
     isoutϕ = (s.∆ϕ2 < absϕ) || onbndϕ
 
     # Pick the surface point and outward direction normal depending on the location of x.
@@ -95,7 +95,7 @@ function surfpt_nearby(x::SVector{2,<:Real}, s::Sector)
     return surf+s.c, nout
 end
 
-translate(s::Sector{D}, ∆::SVector{2,<:Real}) where {D} = Sector{D}(s.c+∆, s.r, s.ϕ₀, s.∆ϕ2, s.data)
+translate(s::Sector{D}, ∆::SVector{2,T}) where {D,T<:Real} = Sector{D,T}(s.c+∆, s.r, s.ϕ₀, s.∆ϕ2, s.data)
 
 function bounds(s::Sector)
     # Find the minimum and maximum coordinates among the center and two ends of the arc.

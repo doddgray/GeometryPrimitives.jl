@@ -1,18 +1,18 @@
 export Ellipsoid
 
-mutable struct Ellipsoid{N,N²,D} <: Shape{N,N²,D}
-    c::SVector{N,Float64}  # center of ellipsoid
-    ri2::SVector{N,Float64}  # inverse squares of "radii" (semi-axes) in axis directions
-    p::SMatrix{N,N,Float64,N²}  # projection matrix to Ellipsoid coordinates; must be orthonormal (see surfpt_nearby)
+mutable struct Ellipsoid{N,N²,D,T} <: Shape{N,N²,D,T}
+    c::SVector{N,T}  # center of ellipsoid
+    ri2::SVector{N,T}  # inverse squares of "radii" (semi-axes) in axis directions
+    p::SMatrix{N,N,T,N²}  # projection matrix to Ellipsoid coordinates; must be orthonormal (see surfpt_nearby)
     data::D  # auxiliary data
-    Ellipsoid{N,N²,D}(c,ri2,p,data) where {N,N²,D} = new(c,ri2,p,data)  # suppress default outer constructor
+    Ellipsoid{N,N²,D,T}(c,ri2,p,data) where {N,N²,D,T<:Real} = new(c,ri2,p,data)  # suppress default outer constructor
 end
 
-Ellipsoid(c::SVector{N,<:Real},
-          r::SVector{N,<:Real},
-          axes::SMatrix{N,N,<:Real}=SMatrix{N,N,Float64}(I),
-          data::D=nothing) where {N,D} =
-    Ellipsoid{N,N*N,D}(c, float.(r).^-2, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))), data)
+Ellipsoid(c::SVector{N,T},
+          r::SVector{N,T},
+          axes::SMatrix{N,N,<:Real}=SMatrix{N,N,T}(I),
+          data::D=nothing) where {N,D,T<:Real} =
+    Ellipsoid{N,N*N,D,T}(c, float.(r).^-2, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))), data)
 
 Ellipsoid(c::AbstractVector{<:Real},  # center of ellipsoid
           r::AbstractVector{<:Real},  # ""
@@ -20,7 +20,7 @@ Ellipsoid(c::AbstractVector{<:Real},  # center of ellipsoid
           data=nothing) =
     (N = length(c); Ellipsoid(SVector{N}(c), SVector{N}(r), SMatrix{N,N}(axes), data))
 
-Ellipsoid(b::Box{N,N²,D}, data::D=nothing) where {N,N²,D} = Ellipsoid{N,N²,D}(b.c, (b.r).^-2, b.p, data)
+Ellipsoid(b::Box{N,N²,D,T}, data::D=nothing) where {N,N²,D,T<:Real} = Ellipsoid{N,N²,D,T}(b.c, (b.r).^-2, b.p, data)
 
 Base.:(==)(b1::Ellipsoid, b2::Ellipsoid) = b1.c==b2.c && b1.ri2==b2.ri2 && b1.p==b2.p && b1.data==b2.data
 Base.isapprox(b1::Ellipsoid, b2::Ellipsoid) = b1.c≈b2.c && b1.ri2≈b2.ri2 && b1.p≈b2.p && b1.data==b2.data
@@ -60,7 +60,7 @@ function surfpt_nearby(x::SVector{N,<:Real}, b::Ellipsoid{N}) where {N}
     return x₀, nout
 end
 
-translate(b::Ellipsoid{N,N²,D}, ∆::SVector{N,<:Real}) where {N,N²,D} = Ellipsoid{N,N²,D}(b.c+∆, b.ri2, b.p, b.data)
+translate(b::Ellipsoid{N,N²,D}, ∆::SVector{N,T}) where {N,N²,D,T<:Real} = Ellipsoid{N,N²,D,T}(b.c+∆, b.ri2, b.p, b.data)
 
 function boundpts(b::Ellipsoid{N}) where {N}
     # Return the points tangential to the bounding box.
