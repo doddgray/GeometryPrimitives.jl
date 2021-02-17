@@ -42,7 +42,7 @@ function Base.in(x::SVector{2,<:Real}, s::Sector)
     return ld ≤ s.r && abs(distangle(ϕ, s.ϕ₀)) ≤ s.∆ϕ2
 end
 
-function surfpt_nearby(x::SVector{2,<:Real}, s::Sector{D,T}) where T<:Real
+function surfpt_nearby(x::SVector{2,<:Real}, s::Sector{D,T}) where {D,T<:Real}
     # Basically mimic the same function for Prism, but proceeds in the (ρ,ϕ) domain.
     d = x - s.c
     ld = norm(d)

@@ -10,8 +10,12 @@ export regpoly, isosceles
 mutable struct Polygon{K,K2,D,T} <: Shape{2,4,D,T}  # K2 = 2K
     v::SMatrix{K,2,T,K2}  # vertices
     n::SMatrix{K,2,T,K2}  # direction normals to edges
+	l::SVector{2,T}		  # lower x,y bounds
+	u::SVector{2,T}		  # upper x,y bounds
+	sz::SVector{2,T}	  # "size" in x and y: sz = l-u
+	rbnd::T				  # minimum distance before point is considered to be on boundary, rmin = √eps(T) * max(sz.data...)
     data::D  # auxiliary data
-    Polygon{K,K2,D}(v,n,data) where {K,K2,D} = new(v,n,data)  # suppress default outer constructor
+    # Polygon{K,K2,D,T}(v,n,data) where {K,K2,D,T<:Real} = new(v,n,data)  # suppress default outer constructor
 end
 # mutable struct Polygon{K,K2,D} <: Shape{2,4,D}  # K2 = 2K
 #     v::SMatrix{K,2,Float64}  # vertices
@@ -20,36 +24,116 @@ end
 #     Polygon{K,K2,D}(v,n,data) where {K,K2,D} = new(v,n,data)  # suppress default outer constructor
 # end
 
-# function Polygon(v::SMatrix{K,2,<:Real}, data::D=nothing) where {K,D}
-function Polygon(v::AbstractMatrix{T}, data::D=nothing) where {D,T<:Real}
-    K = size(v,1);
-    # Sort the vertices in the counter-clockwise direction
-    w = v .- mean(v, dims=1)  # v in center-of-mass coordinates
-    ϕ = mod.(atan.(w[:,2], w[:,1]), 2π)  # SVector{K}: angle of vertices between 0 and 2π; `%` does not work for negative angle
-    if !issorted(ϕ)
-        # Do this only when ϕ is not sorted, because the following uses allocations.
-        ind = MVector{K}(sortperm(ϕ))  # sortperm(::SVector) currently returns Vector, not MVector
-        v = v[ind,:]  # SVector{K}: sorted v
-    end
-
-    # Calculate the increases in angle between neighboring edges.
-    # ∆v = vcat(diff(v, dims=1), SMatrix{1,2}(v[1,:]-v[end,:]))  # SMatrix{K,2}: edge directions
-    ∆v = vcat(diff(v, dims=1), transpose(v[1,:]-v[end,:]))
-    ∆z = ∆v[:,1] + im * ∆v[:,2]  # SVector{K}: edge directions as complex numbers
-    icurr = ntuple(identity, Val(K-1))
-    inext = ntuple(x->x+1, Val(K-1))
-    ∆ϕ = angle.(∆z[SVector(inext)] ./ ∆z[SVector(icurr)])  # angle returns value between -π and π
-
-    # Check all the angle increases are positive.  If they aren't, the polygon is not convex.
-    all(∆ϕ .> 0) || throw("v = $v should represent vertices of convex polygon.")
-
-    n0 = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
-    n = n0 ./ hypot.(n0[:,1],n0[:,2])  # normalize
-    # n = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
-    # n = n ./ hypot.(n[:,1],n[:,2])  # normalize
-
-    return Polygon{K,2K,D,T}((SMatrix{K,2,T}(v)),(SMatrix{K,2,T}(n)),data) # Polygon{K,2K,D}(v,n,data)
+function l_bnds_poly(v::SMatrix{K,2,T}) where {K,T<:Real}
+	@tullio (min) res[b] :=  v[a,b]
+	return SVector(res)
 end
+function u_bnds_poly(v::SMatrix{K,2,T}) where {K,T<:Real}
+	@tullio (max) res[b] :=  v[a,b]
+	return SVector(res)
+end
+# function Polygon(v::AbstractMatrix{T}, data::D=nothing) where {D,T<:Real}
+#     K = size(v,1);
+
+
+function ∆ϕ(∆v::SMatrix{K,2,<:Real}) where K
+	# Calculate the increases in angle between neighboring edges.
+	∆z = ∆v[:,1] + im * ∆v[:,2]  # SVector{K}: edge directions as complex numbers
+	icurr = ntuple(identity, Val(K-1))
+	inext = ntuple(x->x+1, Val(K-1))
+	return angle.(∆z[SVector(inext)] ./ ∆z[SVector(icurr)])  # angle returns value between -π and π
+end
+
+function sort_v_if_needed(v::SMatrix{K,2,T}) where {K,T}
+	w = v .- mean(v, dims=1)  # v in center-of-mass coordinates
+	ϕ = mod.(atan.(w[:,2], w[:,1]), 2π)  # SVector{K}: angle of vertices between 0 and 2π; `%` does not work for negative angle
+	if !issorted(ϕ)	# TODO: make sort_verts shuffling fn with AD rules, currently unsorted verts would break differentiability
+		# Do this only when ϕ is not sorted, because the following uses allocations.
+		ind = MVector{K}(sortperm(ϕ))  # sortperm(::SVector) currently returns Vector, not MVector
+		v = v[ind,:]  # SVector{K}: sorted v
+	end
+end
+
+function n_norm(dv)
+	local one_mone = [1, -1]
+	@tullio n[i,j] := dv[i,3-j] * $one_mone[j] / sqrt( dv[i,1]^2 + dv[i,2]^2 ) nograd=one_mone
+end
+
+n_norm_fwd(dv) = Zygote.forwarddiff(n_norm,dv)
+
+ChainRulesCore.@non_differentiable ∆ϕ(::Any)
+
+function Polygon(v::SMatrix{K,2,T}, data::D=nothing) where {K,D,T<:Real}
+    # Sort the vertices in the counter-clockwise direction
+
+    # w = v .- mean(v, dims=1)  # v in center-of-mass coordinates
+    # ϕ = mod.(atan.(w[:,2], w[:,1]), 2π)  # SVector{K}: angle of vertices between 0 and 2π; `%` does not work for negative angle
+    # if !issorted(ϕ)	# TODO: make sort_verts shuffling fn with AD rules, currently unsorted verts would break differentiability
+    #     # Do this only when ϕ is not sorted, because the following uses allocations.
+    #     ind = MVector{K}(sortperm(ϕ))  # sortperm(::SVector) currently returns Vector, not MVector
+    #     v = v[ind,:]  # SVector{K}: sorted v
+    # end
+    ∆v = v - circshift(v,1)
+    # Check all the angle increases are positive.  If they aren't, the polygon is not convex.
+    # all(∆ϕ(∆v) .> 0) || throw("v = $v should represent vertices of convex polygon.")
+
+	# outward normal directions to edges
+	# one_mone = [	0. 1.
+	# 				-1. 0. ]# SMatrix{2,2}(0., 1., -1., 0.)
+    # n0 = ∆v * one_mone #[∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
+	# @tullio nnorm[k] := ∆v[k,j]^2 |> sqrt
+	# @tullio n[k,j] := n0[k,j] / nnorm[k] # n = n0 ./ hypot.(n0[:,1],n0[:,2])  # normalize
+	# n0 = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
+    # n = n0 ./ hypot.(n0[:,1],n0[:,2])  # normalize
+
+	# n = n_norm(∆v)
+	n = n_norm_fwd(∆v)
+	l = l_bnds_poly(v)
+	u = u_bnds_poly(v)
+	sz = u-l
+	rbnd = Zygote.@ignore(max(sz.data[1],sz.data[2])*Base.rtoldefault(T))
+	# TODO: Ask why `bounds(::Polygon)` was prev. recomputed each time and why
+	# the "size" (`sz`) in find_surfpt_nearby(Polygon was computed as abs.(l-u)?
+	# Hopefully this doesn't break something or hurt performance
+    return Polygon{K,2K,D,T}(v,SMatrix{K,2,T}(n),l,u,sz,rbnd,data) # Polygon{K,2K,D}(v,n,data)
+end
+
+function _∆xe_poly(x::SVector{2},v::SMatrix{K,2},n::SMatrix{K,2})::SVector{K}  where {K} #,T<:Real}
+	@tullio out[k] := n[k,a] * ( x[a] - v[k,a] ) # edge line eqns for a K-point Polygon{K} `s`
+end
+function ∆xe_poly(x::AbstractVector{<:Real},s::Polygon{K})::SVector{K} where K
+	_∆xe_poly(x,s.v,s.n)
+end
+bounds(s::Polygon) = (s.l, s.u)
+function onbnd(Δxe::SVector{K},s::Polygon{K})::SVector{K,Bool} where K
+	map(x->abs(x)≤s.rbnd,Δxe)
+end
+function onbnd(x::SVector{2},s::Polygon)::SVector{K,Bool} where K
+	map(x->abs(x)≤s.rbnd,∆xe_poly(x,s))
+end
+function cout(x::SVector{2},s::Polygon)::Int
+	mapreduce((a,b)->Int(a|b),+,onbnd(x,s),map(isposdef,∆xe_poly(x,s)))
+end
+function cout(∆xe::SVector{K,<:Real},obd::SVector{K,Bool})::Int where K
+	mapreduce((a,b)->Int(a|b),+,obd,map(isposdef,∆xe))
+end
+function imin2(x::SVector{2},s::Polygon{K})::Tuple{Int,Int} where K
+	∆xv = x' .- s.v
+	l∆xv = hypot.(∆xv[:,1], ∆xv[:,2])
+	imin = argmin(l∆xv)
+	return  imin ,  mod1(imin-1,K) # imin,imin₋₁
+end
+
+function _∆x_poly(x::SVector{2},v::SMatrix{K,2},n::SMatrix{K,2},kmax::Int)::SVector{2}  where {K} #,T<:Real}
+	# @tullio Δx[i] := n[$kmax,a] * ( v[$kmax,a] - x[a] * n[$kmax,i]	# works but gradient doesn't vectorize
+	( @tullio Δx_factor := n[$kmax,a] * ( v[$kmax,a] - x[a] ) )  * SVector(n[kmax,1],n[kmax,2])
+end
+∆x_poly(x::AbstractVector{<:Real},s::Polygon)::SVector{2} = _∆x_poly(x,s.v,s.n,argmax(_∆xe_poly(x,s.v,s.n)))
+
+ChainRulesCore.@non_differentiable cout(::Any,::Any)
+ChainRulesCore.@non_differentiable onbnd(::Any,::Any)
+ChainRulesCore.@non_differentiable imin2(::Any,::Any)
+
 
 # Polygon(v::AbstractMatrix{<:Real}, data=nothing) = (K = size(v,1); Polygon(SMatrix{K,2}(v), data))
 
@@ -58,44 +142,38 @@ Base.isapprox(s1::Polygon, s2::Polygon) = s1.v≈s2.v && s1.n≈s2.n && s1.data=
 Base.hash(s::Polygon, h::UInt) = hash(s.v, hash(s.n, hash(s.data, hash(:Polygon, h))))
 
 Base.in(x::SVector{2,<:Real}, s::Polygon) = all(sum(s.n .* (x' .- s.v), dims=Val(2)) .≤ 0)
+# Base.in(x::SVector{3,<:Real}, s::Polygon) = ( x2 = SVector(x[1], x[2]); all(sum(s.n .* (x2' .- s.v), dims=Val(2)) .≤ 0) )
 
 function surfpt_nearby(x::SVector{2,T}, s::Polygon{K}) where {K,T<:Real}
     # Calculate the signed distances from x to edge lines.
-    ∆xe = sum(s.n .* (x' .- s.v), dims=Val(2))[:,1]  # SVector{K}: values of equations of edge lines
-    abs∆xe = abs.(∆xe)  # SVector{K}
-
-    # Determine if x is outside of edges, inclusive.
-    sz = abs.((-)(bounds(s)...))  # SVector{2}
-    onbnd = abs∆xe .≤ Base.rtoldefault(T) * max(sz.data...)  # SVector{K}
-    isout = (∆xe.>0) .| onbnd  # SVector{K}
-
+	# ∆xe = ∆xe_poly(x,s)
+	∆xe = _∆xe_poly(x,s.v,s.n)
+	# Determine if x is outside of edges, inclusive.
+	obd = Zygote.@ignore(onbnd(∆xe,s))
     # For x inside the polygon, it is easy to find the closest surface point: we can simply
     # pick the closest edge and find its point closest to x.
     # For x outside the polygon, there are many cases depending on how many edges x lies
     # outside of.  However, x that is sufficiently close to the polygon should be outside of
     # at most two edges.  (Outside two edges near the vertices, and one edge elsewhere.)
     # Therefore, we will consider only cout ≤ 2 below.
-    cout = count(isout)
-    if cout == 2  # x is outside two edges
+    co = Zygote.@ignore(cout(∆xe,obd))
+    if co == 2  # x is outside two edges
         # We could choose to find ind corresponding to the two nonnegative ∆xe, but such an
         # operation leads to allocations because it does not create an SVector.  Instead,
         # find the closest vertex directly, which is the surface point we are looking for
         # for cout = 2.
-        ∆xv = x' .- s.v
-        l∆xv = hypot.(∆xv[:,1], ∆xv[:,2])
-        imin = argmin(l∆xv)
-        surf = s.v[imin,:]
-        imin₋₁ = mod1(imin-1,K)
-
-        if onbnd[imin] && onbnd[imin₋₁]  # x is very close to vertex imin
-            nout = s.n[imin,:] + s.n[imin₋₁,:]
-        else
-            nout = x - s.v[imin,:]
+        imin, imin₋₁ = imin2(x,s)
+		surf = SVector{2}(s.v[imin,1],s.v[imin,2])
+		@inbounds if obd[imin] && obd[imin₋₁]  # x is very close to vertex imin
+            # nout = reinterpret(SVector{2,T}, normalize( [ s.n[imin,1]+s.n[imin₋₁,1],s.v[imin,2]+s.n[imin₋₁,2] ]))  #  s.n[imin,:] + s.n[imin₋₁,:]
+			@inbounds nout = normalize( [ s.n[imin,1]+s.n[imin₋₁,1],s.v[imin,2]+s.n[imin₋₁,2] ])
+		else
+            # nout = reinterpret(SVector{2,T}, normalize( [ x[1] - s.v[imin,1] , x[2] - s.v[imin,2] ] ) )[1]
+			@inbounds nout = normalize( [ x[1] - s.v[imin,1] , x[2] - s.v[imin,2] ] )
         end
-        nout = normalize(nout)
     else  # cout ≤ 1 or cout ≥ 3
-        cout ≤ 1 || @warn "x = $x is outside $cout edges: too far from polygon with vertices $(s.v); " *
-                            "result could be inaccurate."
+        # co ≤ 1 || @warn "x = $x is outside $cout edges: too far from polygon with vertices $(s.v); " *
+        #                     "result could be inaccurate."
         # Choose the closest edge to x.
         # If cout = 0, all ∆xe are negative, so the largest ∆xe is the smallest in magnitude
         # and corresponds to the closest edge.
@@ -103,12 +181,9 @@ function surfpt_nearby(x::SVector{2,T}, s::Polygon{K}) where {K,T<:Real}
         # nonnegative one and corresponds to the edge outside which x lies.
         # Even for cout = 3, this seems to be a reasonable choice from a simple geometric
         # argument.
-        imax = argmax(∆xe)
-        vmax, nmax = s.v[imax,:], s.n[imax,:]
-
-        ∆x = (nmax⋅(vmax-x)) .* nmax
-        surf = x + ∆x
-        nout = nmax
+        imax::Int = Zygote.@ignore(argmax(∆xe))
+        surf = x + _∆x_poly(x,s.v,s.n,imax) # ∆x = (nmax⋅(vmax-x)) .* nmax
+        nout = @inbounds SVector(s.n[imax,1],s.n[imax,2] )
     end
 
     return surf, nout
@@ -116,15 +191,9 @@ end
 
 translate(s::Polygon{K,K2,D}, ∆::SVector{2,T}) where {K,K2,D,T<:Real} = Polygon{K,K2,D,T}(s.v .+ transpose(∆), s.n, s.data)
 
-function bounds(s::Polygon{K,K2,D,T}) where {K,K2,D,T<:Real}
-    # Box bounds original:          m = maximum(abs.(A * signmatrix(b)), dims=2)[:,1] # extrema of all 2^N corners of the box
-    # Box bounds zygote friendly:   m = maximum(abs.(Array((inv(b.p) .* b.r') * signmatrix(b))), dims=2)[:,1] # extrema of all 2^N corners of the box
-    # l = minimum(s.v, dims=1)[1,:]
-    # u = maximum(s.v, dims=1)[1,:]
-    l = SVector{2,T}(minimum(Array(s.v), dims=1)[1,:])
-    u = SVector{2,T}(maximum(Array(s.v), dims=1)[1,:])
-    return (l, u)
-end
+
+
+
 
 #= Factory methods =#
 # Regular polygon

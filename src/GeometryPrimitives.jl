@@ -1,6 +1,9 @@
 module GeometryPrimitives
-using StaticArrays, LinearAlgebra
+using StaticArrays, LinearAlgebra, ChainRulesCore, Zygote, Tullio, LoopVectorization
 using Statistics: mean
+# using Zygote: @ignore # remove as soon as ChainRules/ChainRulesCore adds replacement
+# using ChainRulesCore: @non_differentiable
+
 
 export Shape, Shape1, Shape2, Shape3
 export surfpt_nearby, normal, bounds, translate
@@ -36,6 +39,11 @@ function orthoaxes(n::SVector{N,<:Real}) where {N}
 
     return u, v
 end
+
+
+SVector{2,T}(x::SVector{3,T}) where T<:Real = SVector{2,T}(x[1],x[2])
+SVector{2}(x::SVector{3}) = SVector{2}(x[1],x[2])
+Base.in(x::SVector{3,<:Real}, s::Shape2) = (x2=SVector{2}(x[1],x[2]); in(x2,s))
 
 
 include("box.jl")

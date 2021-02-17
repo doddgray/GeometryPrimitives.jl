@@ -5,8 +5,6 @@
 
 export volfrac
 
-using Zygote: ignore, @ignore, dropgrad
-
 const X, Y, Z = 1, 2, 3
 const XYZ, YZX, ZXY = (X,Y,Z), (Y,Z,X), (Z,X,Y)
 const UVW = YZX, ZXY, XYZ
@@ -280,10 +278,10 @@ volfrac(vxl::NTuple{2,SVector{2,<:Number}}, nout::SVector{2,<:Real}, r₀::SVect
             SVector(nout[1], nout[2], 0),
             SVector(r₀[1], r₀[2], 0))
 
-# volfrac(vxl::NTuple{2,AbstractVector{<:Real}}, nout::AbstractVector{<:Real}, r₀::AbstractVector{<:Real}) =
-#     volfrac((SVector(vxl[N][1],vxl[N][2],0), SVector(vxl[P][1],vxl[P][2],1)),
-#             SVector(nout[1], nout[2], 0),
-#             SVector(r₀[1], r₀[2], 0))
+volfrac(vxl::NTuple{2,<:AbstractVector}, nout::AbstractVector{<:Real}, r₀::AbstractVector{<:Real}) =
+    volfrac((SVector(vxl[N][1],vxl[N][2],0), SVector(vxl[P][1],vxl[P][2],1)),
+            SVector(nout[1], nout[2], 0),
+            SVector(r₀[1], r₀[2], 0))
 
 # volfrac() for 1D voxel (= line segment).
 # - Turn the nout and r₀ into 3D vectors along the z-axis
