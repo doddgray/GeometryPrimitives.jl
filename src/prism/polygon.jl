@@ -105,8 +105,10 @@ function ∆xe_poly(x::AbstractVector{<:Real},s::Polygon{K})::SVector{K} where K
 	_∆xe_poly(x,s.v,s.n)
 end
 bounds(s::Polygon) = (s.l, s.u)
-function onbnd(Δxe::SVector{K},s::Polygon{K})::SVector{K,Bool} where K
-	map(x->abs(x)≤s.rbnd,Δxe)
+
+# function onbnd(Δxe::SVector{K},s::Polygon{K})::SVector{K,Bool} where K 		# fixed wrong Δ, keeping in case this breaks
+function onbnd(∆xe::SVector{K},s::Polygon{K})::SVector{K,Bool} where K
+	map(x->abs(x)≤s.rbnd,∆xe)
 end
 function onbnd(x::SVector{2},s::Polygon)::SVector{K,Bool} where K
 	map(x->abs(x)≤s.rbnd,∆xe_poly(x,s))
@@ -166,7 +168,7 @@ function surfpt_nearby(x::SVector{2,T}, s::Polygon{K}) where {K,T<:Real}
 		surf = SVector{2}(s.v[imin,1],s.v[imin,2])
 		@inbounds if obd[imin] && obd[imin₋₁]  # x is very close to vertex imin
             # nout = reinterpret(SVector{2,T}, normalize( [ s.n[imin,1]+s.n[imin₋₁,1],s.v[imin,2]+s.n[imin₋₁,2] ]))  #  s.n[imin,:] + s.n[imin₋₁,:]
-			@inbounds nout = normalize( [ s.n[imin,1]+s.n[imin₋₁,1],s.v[imin,2]+s.n[imin₋₁,2] ])
+			@inbounds nout = normalize( [ s.n[imin,1]+s.n[imin₋₁,1],s.n[imin,2]+s.n[imin₋₁,2] ])
 		else
             # nout = reinterpret(SVector{2,T}, normalize( [ x[1] - s.v[imin,1] , x[2] - s.v[imin,2] ] ) )[1]
 			@inbounds nout = normalize( [ x[1] - s.v[imin,1] , x[2] - s.v[imin,2] ] )
