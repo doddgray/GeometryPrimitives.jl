@@ -36,7 +36,7 @@ function Box(c::SVector{N,T},
 	@tullio axnorm[i] := axes[i,j]^2 |> sqrt
 	@tullio p_inv[i,j] := axes[i,j] / axnorm[j]
 	# p_inv = axes ./ sqrt.(sum(abs2,axes,dims=1))
-	smr = Zygote.@ignore(signmatrix(r))
+	smr = signmatrix(r)
 	@tullio (max) m[j] := p_inv[i,k] * r[i] * smr[i,j] nograd=smr
     Box{N,N*N,D,T}(c, 0.5d, SMatrix(inv(p_inv)),c-SVector(m),c+SVector(m),data)
 end
@@ -72,13 +72,15 @@ function Base.in(x::SVector{N,<:Real}, b::Box{N}) where {N}
 end
 
 function f_onbnd(bin::Box{N,N²,D,T},absdin) where {N,N²,D,T<:Real}
-	b = Zygote.@ignore(bin)
-	absd = Zygote.@ignore(absdin)
+	b = bin
+	absd = absdin
 	abs.(b.r.-absd) .≤ Base.rtoldefault(T) .* b.r  # basically b.r .≈ absd but faster
 end
 
-f_isout(b,absd) =  (isout = Zygote.@ignore ((b.r.<absd) .| f_onbnd(b,absd) ); isout)
-f_signs(d) =  (signs = Zygote.@ignore(sign.(d)'); signs) #(copysign.(1.0,d)'); signs)
+# f_isout(b,absd) =  (isout = Zygote.@ignore ((b.r.<absd) .| f_onbnd(b,absd) ); isout)
+# f_signs(d) =  (signs = Zygote.@ignore(sign.(d)'); signs) #(copysign.(1.0,d)'); signs)
+f_isout(b,absd) =  ( b.r.< absd ) .| f_onbnd(b,absd) 
+f_signs(d) =  sign.(d)'
 
 @non_differentiable f_onbnd(::Any)
 @non_differentiable f_isout(::Any)

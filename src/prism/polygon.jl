@@ -59,7 +59,7 @@ function n_norm(dv)
 	@tullio n[i,j] := dv[i,3-j] * $one_mone[j] / sqrt( dv[i,1]^2 + dv[i,2]^2 ) nograd=one_mone
 end
 
-n_norm_fwd(dv) = Zygote.forwarddiff(n_norm,dv)
+n_norm_fwd(dv) = n_norm(dv) # Zygote.forwarddiff(n_norm,dv)
 
 ChainRulesCore.@non_differentiable ∆ϕ(::Any)
 
@@ -91,7 +91,8 @@ function Polygon(v::SMatrix{K,2,T}, data::D=nothing) where {K,D,T<:Real}
 	l = l_bnds_poly(v)
 	u = u_bnds_poly(v)
 	sz = u-l
-	rbnd = Zygote.@ignore(max(sz.data[1],sz.data[2])*Base.rtoldefault(T))
+	# rbnd = Zygote.@ignore(max(sz.data[1],sz.data[2])*Base.rtoldefault(T))
+    rbnd = max(sz.data[1],sz.data[2])*Base.rtoldefault(T)
 	# TODO: Ask why `bounds(::Polygon)` was prev. recomputed each time and why
 	# the "size" (`sz`) in find_surfpt_nearby(Polygon was computed as abs.(l-u)?
 	# Hopefully this doesn't break something or hurt performance
@@ -151,14 +152,14 @@ function surfpt_nearby(x::SVector{2,T}, s::Polygon{K}) where {K,T<:Real}
 	# ∆xe = ∆xe_poly(x,s)
 	∆xe = _∆xe_poly(x,s.v,s.n)
 	# Determine if x is outside of edges, inclusive.
-	obd = Zygote.@ignore(onbnd(∆xe,s))
+    obd = onbnd(∆xe,s)
     # For x inside the polygon, it is easy to find the closest surface point: we can simply
     # pick the closest edge and find its point closest to x.
     # For x outside the polygon, there are many cases depending on how many edges x lies
     # outside of.  However, x that is sufficiently close to the polygon should be outside of
     # at most two edges.  (Outside two edges near the vertices, and one edge elsewhere.)
     # Therefore, we will consider only cout ≤ 2 below.
-    co = Zygote.@ignore(cout(∆xe,obd))
+    co = cout(∆xe,obd)
     if co == 2  # x is outside two edges
         # We could choose to find ind corresponding to the two nonnegative ∆xe, but such an
         # operation leads to allocations because it does not create an SVector.  Instead,
@@ -183,7 +184,8 @@ function surfpt_nearby(x::SVector{2,T}, s::Polygon{K}) where {K,T<:Real}
         # nonnegative one and corresponds to the edge outside which x lies.
         # Even for cout = 3, this seems to be a reasonable choice from a simple geometric
         # argument.
-        imax::Int = Zygote.@ignore(argmax(∆xe))
+        # imax::Int = Zygote.@ignore(argmax(∆xe))
+        imax = argmax(∆xe)
         surf = x + _∆x_poly(x,s.v,s.n,imax) # ∆x = (nmax⋅(vmax-x)) .* nmax
         nout = @inbounds SVector(s.n[imax,1],s.n[imax,2] )
     end

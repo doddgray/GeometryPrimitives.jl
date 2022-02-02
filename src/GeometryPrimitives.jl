@@ -1,5 +1,5 @@
 module GeometryPrimitives
-using StaticArrays, LinearAlgebra, ChainRulesCore, Zygote, Tullio, LoopVectorization
+using StaticArrays, LinearAlgebra, ChainRulesCore, Tullio, LoopVectorization
 using Statistics: mean
 # using Zygote: @ignore # remove as soon as ChainRules/ChainRulesCore adds replacement
 # using ChainRulesCore: @non_differentiable
