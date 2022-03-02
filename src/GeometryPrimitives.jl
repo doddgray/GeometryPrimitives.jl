@@ -1,9 +1,6 @@
 module GeometryPrimitives
 using StaticArrays, LinearAlgebra, ChainRulesCore, Tullio, LoopVectorization
 using Statistics: mean
-# using Zygote: @ignore # remove as soon as ChainRules/ChainRulesCore adds replacement
-# using ChainRulesCore: @non_differentiable
-
 
 export Shape, Shape1, Shape2, Shape3
 export surfpt_nearby, normal, bounds, translate
@@ -53,5 +50,13 @@ include("prism/prism.jl")
 include("periodize.jl")
 include("kdtree.jl")
 include("vxlcut.jl")
+
+# ChainRulesCore differentiation rules for SArray and subtypes
+ChainRulesCore.rrule(T::Type{<:SArray}, xs::Number...) = ( T(xs...), dv -> (ChainRulesCore.NoTangent(), dv...) )
+ChainRulesCore.rrule(T::Type{<:SArray}, x::AbstractArray) = ( T(x), dv -> (ChainRulesCore.NoTangent(), dv) )
+ChainRulesCore.rrule(T::Type{<:SMatrix}, xs::Number...) = ( T(xs...), dv -> (ChainRulesCore.NoTangent(), dv...) )
+ChainRulesCore.rrule(T::Type{<:SMatrix}, x::AbstractMatrix) = ( T(x), dv -> (ChainRulesCore.NoTangent(), dv) )
+ChainRulesCore.rrule(T::Type{<:SVector}, xs::Number...) = ( T(xs...), dv -> (ChainRulesCore.NoTangent(), dv...) )
+ChainRulesCore.rrule(T::Type{<:SVector}, x::AbstractVector) = ( T(x), dv -> (ChainRulesCore.NoTangent(), dv) )
 
 end # module

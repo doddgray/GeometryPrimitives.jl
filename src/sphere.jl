@@ -25,3 +25,28 @@ end
 translate(s::Sphere{N,N²,D}, ∆::SVector{N}) where {N,N²,D,T<:Real} = Sphere{N,N²,D,T}(s.c+∆, s.r, s.data)
 
 bounds(s::Sphere) = (s.c.-s.r, s.c.+s.r)
+
+
+"""
+ChainRulesCore differentiation rules for Sphere
+
+Rules for reverse-mode differentiation (`rrules`) below just let the AD system auto-differentiate the Sphere
+contstructor and `surfpt_nearby` method for Spheres, but then re-format the gradient result as a `Tangent{Sphere}`,
+Sphere-like struct with addition methods defined, enabling gradient accumulation.
+"""
+
+function rrule(TS::Type{<:Sphere}, c, r, data)
+    Sphere_pullback(Δsphere) = NoTangent(), Δsphere.c, Δsphere.r, Δsphere.data
+    return TS(c,r,data), Sphere_pullback
+end
+
+function rrule(config::RuleConfig{>:HasReverseMode}, ::typeof(surfpt_nearby), x::SVector{N,T}, s::Sphere{N}) where {N,T<:Real}
+    r₀_n⃗_and_surfpt_nearby_Sphere_fields_pullback = rrule_via_ad(config,(x,c,r)->surfpt_nearby(x,Sphere(c,r,nothing)),x,s.c,s.r)
+    r₀_n⃗    = first(r₀_n⃗_and_surfpt_nearby_Sphere_fields_pullback)
+    surfpt_nearby_Sphere_fields_pullback = last( r₀_n⃗_and_surfpt_nearby_Sphere_fields_pullback )
+    function surfpt_nearby_Sphere_pullback(r₀_bar,n⃗_bar)
+        x̄,c̄,r̄ = surfpt_nearby_Sphere_fields_pullback(r₀_bar,n⃗_bar)
+        return NoTangent(), x̄, @thunk(canonicalize(Tangent{typeof(s)}(;c=c̄,r=r̄)))
+    end
+    return r₀_n⃗, surfpt_nearby_Sphere_pullback
+end
