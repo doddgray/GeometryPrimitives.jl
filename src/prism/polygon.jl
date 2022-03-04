@@ -169,10 +169,12 @@ function surfpt_nearby(x::SVector{2,T}, s::Polygon{K}) where {K,T<:Real}
 		surf = SVector{2}(s.v[imin,1],s.v[imin,2])
 		@inbounds if obd[imin] && obd[imin₋₁]  # x is very close to vertex imin
             # nout = reinterpret(SVector{2,T}, normalize( [ s.n[imin,1]+s.n[imin₋₁,1],s.v[imin,2]+s.n[imin₋₁,2] ]))  #  s.n[imin,:] + s.n[imin₋₁,:]
-			@inbounds nout = normalize( [ s.n[imin,1]+s.n[imin₋₁,1],s.n[imin,2]+s.n[imin₋₁,2] ])
+			# @inbounds nout = SVector{2}(normalize( [ s.n[imin,1]+s.n[imin₋₁,1],s.n[imin,2]+s.n[imin₋₁,2] ]))
+            @inbounds nout = normalize( SVector{2}( s.n[imin,1]+s.n[imin₋₁,1], s.n[imin,2]+s.n[imin₋₁,2] ) )
 		else
             # nout = reinterpret(SVector{2,T}, normalize( [ x[1] - s.v[imin,1] , x[2] - s.v[imin,2] ] ) )[1]
-			@inbounds nout = normalize( [ x[1] - s.v[imin,1] , x[2] - s.v[imin,2] ] )
+			# @inbounds nout = SVector{2}(normalize( [ x[1] - s.v[imin,1] , x[2] - s.v[imin,2] ] ))
+            @inbounds nout = normalize( SVector{2}( x[1] - s.v[imin,1] , x[2] - s.v[imin,2]  ) )
         end
     else  # cout ≤ 1 or cout ≥ 3
         # co ≤ 1 || @warn "x = $x is outside $cout edges: too far from polygon with vertices $(s.v); " *
@@ -187,9 +189,8 @@ function surfpt_nearby(x::SVector{2,T}, s::Polygon{K}) where {K,T<:Real}
         # imax::Int = Zygote.@ignore(argmax(∆xe))
         imax = argmax(∆xe)
         surf = x + _∆x_poly(x,s.v,s.n,imax) # ∆x = (nmax⋅(vmax-x)) .* nmax
-        nout = @inbounds SVector(s.n[imax,1],s.n[imax,2] )
+        nout = @inbounds SVector{2}(s.n[imax,1],s.n[imax,2] )
     end
-
     return surf, nout
 end
 
