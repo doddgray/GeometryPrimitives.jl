@@ -205,7 +205,7 @@ translate(s::Polygon{K,K2,D}, ∆::SVector{2,T}) where {K,K2,D,T<:Real} = Polygo
 function regpoly(::Val{K},  # number of vertices
                  r::Real,  # distance between center and each vertex
                  θ::Real=π/2,  # angle from +x-direction towards first vertex; π/2 corresponds to +y-direction
-                 c::SVector{2,T}=SVector(0.0,0.0),  # center location
+                 c::SVector{2,T}=SVector{2}(0.0,0.0),  # center location
                  data=nothing) where {K,T<:Real}
     ∆θ = 2π / K
 

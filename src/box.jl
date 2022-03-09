@@ -37,8 +37,10 @@ function Box(c::SVector{N,T},
 	@tullio p_inv[i,j] := axes[i,j] / axnorm[j]
 	# p_inv = axes ./ sqrt.(sum(abs2,axes,dims=1))
 	smr = signmatrix(r)
-	@tullio (max) m[j] := p_inv[i,k] * r[i] * smr[i,j] nograd=smr
-    Box{N,N*N,D,T}(c, 0.5d, SMatrix(inv(p_inv)),c-SVector(m),c+SVector(m),data)
+	# @tullio (max) m[j] := p_inv[i,k] * r[i] * smr[i,j] nograd=smr
+    A = mapreduce(*,hcat,eachcol(p_inv),r)
+    m = SVector{N}(maximum(map(abs,A*smr),dims=2)[:,1])
+    Box{N,N*N,D,T}(c, 0.5d, SMatrix{N,N}(inv(p_inv)),c-m,c+m,data)
 end
 
 Box(c::AbstractVector{T},  # center of box
