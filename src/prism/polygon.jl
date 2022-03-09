@@ -282,31 +282,31 @@ contstructor and `surfpt_nearby` method for Polygons, but then re-format the gra
 Polygon-like struct with addition methods defined, enabling gradient accumulation.
 """
 
-# function rrule(TP::Type{<:Polygon}, v, n, l, u, sz, rbnd, data)
-#     Polygon_pullback(Δpolygon) = NoTangent(), Δpolygon.v, Δpolygon.n, Δpolygon.l, Δpolygon.u, Δpolygon.sz, Δpolygon.rbnd, Δpolygon.data
-#     return TP(v, n, l, u, sz, rbnd, data), Polygon_pullback
+# # function rrule(TP::Type{<:Polygon}, v, n, l, u, sz, rbnd, data)
+# #     Polygon_pullback(Δpolygon) = NoTangent(), Δpolygon.v, Δpolygon.n, Δpolygon.l, Δpolygon.u, Δpolygon.sz, Δpolygon.rbnd, Δpolygon.data
+# #     return TP(v, n, l, u, sz, rbnd, data), Polygon_pullback
+# # end
+
+# # rrule(config::RuleConfig,TP::Type{<:Polygon}, v, n, l, u, sz, rbnd, data) = rrule(TP,v, n, l, u, sz, rbnd, data)
+
+# function rrule(config::RuleConfig{>:HasReverseMode},::Type{<:Polygon},v::AbstractMatrix,data::D) where{D}
+#     Polygon_and_Polygon_constructor_pullback = rrule_via_ad(config,Polygon,v,data)
+#     polygon = first(Polygon_and_Polygon_constructor_pullback)
+#     Polygon_constructor_pullback = last(Polygon_and_Polygon_constructor_pullback)
+#     function Polygon_pullback(Δpolygon)
+#         v̄,d̄ata = Polygon_constructor_pullback(Δpolygon)
+#         return NoTangent(),v̄,d̄ata
+#     end
+#     return polygon, Polygon_pullback
 # end
 
-# rrule(config::RuleConfig,TP::Type{<:Polygon}, v, n, l, u, sz, rbnd, data) = rrule(TP,v, n, l, u, sz, rbnd, data)
-
-function rrule(config::RuleConfig{>:HasReverseMode},::Type{<:Polygon},v::AbstractMatrix,data::D) where{D}
-    Polygon_and_Polygon_constructor_pullback = rrule_via_ad(config,Polygon,v,data)
-    polygon = first(Polygon_and_Polygon_constructor_pullback)
-    Polygon_constructor_pullback = last(Polygon_and_Polygon_constructor_pullback)
-    function Polygon_pullback(Δpolygon)
-        v̄,d̄ata = Polygon_constructor_pullback(Δpolygon)
-        return NoTangent(),v̄,d̄ata
-    end
-    return polygon, Polygon_pullback
-end
-
-function rrule(config::RuleConfig{>:HasReverseMode}, ::typeof(surfpt_nearby), x::SVector{N,T}, p::Polygon{K}) where {N,K,T<:Real}
-    r₀_n⃗_and_surfpt_nearby_Polygon_fields_pullback = rrule_via_ad(config,(x,v,n)->surfpt_nearby(x,Polygon(v,n,p.l,p.u,p.sz,p.rbnd,nothing)),x,p.v,p.n)
-    r₀_n⃗    = first(r₀_n⃗_and_surfpt_nearby_Polygon_fields_pullback)
-    surfpt_nearby_Polygon_fields_pullback = last( r₀_n⃗_and_surfpt_nearby_Polygon_fields_pullback )
-    function surfpt_nearby_Polygon_pullback(r₀_bar,n⃗_bar)
-        x̄,v̄,n̄ = surfpt_nearby_Polygon_fields_pullback(r₀_bar,n⃗_bar)
-        return NoTangent(), x̄, @thunk(canonicalize(Tangent{typeof(p)}(;v=v̄,n=n̄)))
-    end
-    return r₀_n⃗, surfpt_nearby_Polygon_pullback
-end
+# function rrule(config::RuleConfig{>:HasReverseMode}, ::typeof(surfpt_nearby), x::SVector{N,T}, p::Polygon{K}) where {N,K,T<:Real}
+#     r₀_n⃗_and_surfpt_nearby_Polygon_fields_pullback = rrule_via_ad(config,(x,v,n)->surfpt_nearby(x,Polygon(v,n,p.l,p.u,p.sz,p.rbnd,nothing)),x,p.v,p.n)
+#     r₀_n⃗    = first(r₀_n⃗_and_surfpt_nearby_Polygon_fields_pullback)
+#     surfpt_nearby_Polygon_fields_pullback = last( r₀_n⃗_and_surfpt_nearby_Polygon_fields_pullback )
+#     function surfpt_nearby_Polygon_pullback(r₀_bar,n⃗_bar)
+#         x̄,v̄,n̄ = surfpt_nearby_Polygon_fields_pullback(r₀_bar,n⃗_bar)
+#         return NoTangent(), x̄, @thunk(canonicalize(Tangent{typeof(p)}(;v=v̄,n=n̄)))
+#     end
+#     return r₀_n⃗, surfpt_nearby_Polygon_pullback
+# end

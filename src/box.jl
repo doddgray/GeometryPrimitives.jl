@@ -136,31 +136,31 @@ contstructor and `surfpt_nearby` method for `Box` subtypes, but then re-format t
 Box-like struct with addition methods defined, enabling gradient accumulation.
 """
 
-# function rrule(TB::Type{<:Box}, c, r, p, l, u, data)
-#     Box_pullback(Δbox) = NoTangent(), Δbox.c, Δbox.r, Δbox.p, Δbox.l, Δbox.u, Δbox.data
-#     return TB(c,r,p,l,u,data), Box_pullback
+# # function rrule(TB::Type{<:Box}, c, r, p, l, u, data)
+# #     Box_pullback(Δbox) = NoTangent(), Δbox.c, Δbox.r, Δbox.p, Δbox.l, Δbox.u, Δbox.data
+# #     return TB(c,r,p,l,u,data), Box_pullback
+# # end
+
+# # rrule(config::RuleConfig,TB::Type{<:Box}, c, r, p, l, u, data) = rrule(TB,c,r,p,l,u,data)
+
+# function rrule(config::RuleConfig{>:HasReverseMode},::Type{<:Box},c::AbstractVector,d::AbstractVector,axes::AbstractMatrix,data::D) where{D}
+#     box_and_Box_constructor_pullback = rrule_via_ad(config,Box,c,d,axes,data)
+#     box = first(box_and_Box_constructor_pullback)
+#     Box_constructor_pullback = last(box_and_Box_constructor_pullback)
+#     function Box_pullback(Δbox)
+#         c̄,d̄,āxes,d̄ata = Box_constructor_pullback(Δbox)
+#         return NoTangent(),c̄,d̄,āxes,d̄ata
+#     end
+#     return box, Box_pullback
 # end
 
-# rrule(config::RuleConfig,TB::Type{<:Box}, c, r, p, l, u, data) = rrule(TB,c,r,p,l,u,data)
-
-function rrule(config::RuleConfig{>:HasReverseMode},::Type{<:Box},c::AbstractVector,d::AbstractVector,axes::AbstractMatrix,data::D) where{D}
-    box_and_Box_constructor_pullback = rrule_via_ad(config,Box,c,d,axes,data)
-    box = first(box_and_Box_constructor_pullback)
-    Box_constructor_pullback = last(box_and_Box_constructor_pullback)
-    function Box_pullback(Δbox)
-        c̄,d̄,āxes,d̄ata = Box_constructor_pullback(Δbox)
-        return NoTangent(),c̄,d̄,āxes,d̄ata
-    end
-    return box, Box_pullback
-end
-
-function rrule(config::RuleConfig{>:HasReverseMode}, ::typeof(surfpt_nearby), x::SVector{N,T}, b::Box{N}) where {N,T<:Real}
-    r₀_n⃗_and_surfpt_nearby_Box_fields_pullback = rrule_via_ad(config,(x,c,r,p)->surfpt_nearby(x,Box(c,r,p,b.l,b.u,nothing)),x,b.c,b.r,b.p)
-    r₀_n⃗    = first(r₀_n⃗_and_surfpt_nearby_Box_fields_pullback)
-    surfpt_nearby_Box_fields_pullback = last( r₀_n⃗_and_surfpt_nearby_Box_fields_pullback )
-    function surfpt_nearby_Box_pullback(r₀_bar,n⃗_bar)
-        x̄,c̄,r̄,p̄ = surfpt_nearby_Box_fields_pullback(r₀_bar,n⃗_bar)
-        return NoTangent(), x̄, @thunk(canonicalize(Tangent{typeof(b)}(;c=c̄,r=r̄,p=p̄)))
-    end
-    return r₀_n⃗, surfpt_nearby_Box_pullback
-end
+# function rrule(config::RuleConfig{>:HasReverseMode}, ::typeof(surfpt_nearby), x::SVector{N,T}, b::Box{N}) where {N,T<:Real}
+#     r₀_n⃗_and_surfpt_nearby_Box_fields_pullback = rrule_via_ad(config,(x,c,r,p)->surfpt_nearby(x,Box(c,r,p,b.l,b.u,nothing)),x,b.c,b.r,b.p)
+#     r₀_n⃗    = first(r₀_n⃗_and_surfpt_nearby_Box_fields_pullback)
+#     surfpt_nearby_Box_fields_pullback = last( r₀_n⃗_and_surfpt_nearby_Box_fields_pullback )
+#     function surfpt_nearby_Box_pullback(r₀_bar,n⃗_bar)
+#         x̄,c̄,r̄,p̄ = surfpt_nearby_Box_fields_pullback(r₀_bar,n⃗_bar)
+#         return NoTangent(), x̄, @thunk(canonicalize(Tangent{typeof(b)}(;c=c̄,r=r̄,p=p̄)))
+#     end
+#     return r₀_n⃗, surfpt_nearby_Box_pullback
+# end
