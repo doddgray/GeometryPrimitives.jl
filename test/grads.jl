@@ -1,5 +1,14 @@
 using LinearAlgebra, StaticArrays, GeometryPrimitives, Test
 using ChainRules, Zygote, FiniteDifferences, ForwardDiff
+using GeometryPrimitives: sort_v_if_needed
+
+function test_AD(f::Function,p;nFD=5)
+    primal  =   f(p)
+    gr_RM   =   first(Zygote.gradient(f,p))
+    gr_FM   =   ForwardDiff.gradient(f,p)
+    gr_FD   =   first(FiniteDifferences.grad(central_fdm(nFD,1),f,p))
+    return isapprox(gr_RM,gr_FD,rtol=1e-4) && isapprox(gr_RM,gr_FD,rtol=1e-4)
+end
 
 function demo_shapes2D(p::Vector{T}=rand(17)) where T<:Real
     ε₁  =   diagm([p[1],p[1],p[1]])
@@ -32,11 +41,9 @@ function demo_shapes2D(p::Vector{T}=rand(17)) where T<:Real
 
 	return ( t, s, b )
 end
-##
-# Spheres
+
+# 2D Sphere and Box functions
 make_sphere2(p) = Sphere(SVector{2}(p[1:2]),p[3],p[4])
-make_sphere3(p) = Sphere(SVector{3}(p[1:3]),p[4],p[5])
-# Boxes
 function make_box2(p)   # length(p) should be 9 
     return Box(					# Instantiate N-D box, here N=2 (rectangle)
         SVector{2}(p[1:2]),					# c: center
@@ -49,6 +56,16 @@ function make_box2(p)   # length(p) should be 9
         p[9],						# data: any type, data associated with box shape
     )
 end
+# 2D polygon functions
+make_5gon(p) = Polygon(sort_v_if_needed(SMatrix{5,2}(p[1:10])),p[11])
+make_10gon(p) = Polygon(sort_v_if_needed(SMatrix{10,2}(p[1:20])),p[21])
+make_100gon(p) = Polygon(sort_v_if_needed(SMatrix{100,2}(p[1:200])),p[201])
+make_8regpoly(p) = regpoly(Val(8),first(p),p[2],SVector{2}(p[3:4]),p[5])
+make_regpoly(n,p) = regpoly(n,first(p),p[2],SVector{2}(p[3:4]),p[5])
+fsh2D = ( make_sphere2, make_box2, make_5gon, make_10gon, make_100gon, make_8regpoly)
+np_fsh2D = ( 11, 21, 201, 5, 5 )
+# 3D Sphere and Box functions
+make_sphere3(p) = Sphere(SVector{3}(p[1:3]),p[4],p[5])
 function make_box3(p)   # length(p) should be 9 
     return Box(					# Instantiate N-D box, here N=2 (rectangle)
         SVector{3}(p[1:3]),					# c: center
@@ -61,53 +78,59 @@ function make_box3(p)   # length(p) should be 9
         p[16],						# data: any type, data associated with box shape
     )
 end
-# 2D polygons
-make_5gon(p) = Polygon(sort_v_if_needed(SMatrix{5,2}(p[1:10])),p[11])
-make_10gon(p) = Polygon(sort_v_if_needed(SMatrix{10,2}(p[1:20])),p[21])
-make_100gon(p) = Polygon(sort_v_if_needed(SMatrix{100,2}(p[1:200])),p[201])
-make_8regpoly(p) = regpoly(Val(8),first(p),p[2],SVector{2}(p[3:4]),p[5])
-make_regpoly(n,p) = regpoly(n,first(p),p[2],SVector{2}(p[3:4]),p[5])
-# 3D prism-type shapes
+# 3D prism-related shape functions
 make_6polyprism(p) = PolygonalPrism(SVector{3}(p[1:3]),sort_v_if_needed(SMatrix{6,2}(p[4:15])),p[16])
 make_cyl(p) = Cylinder(SVector{3}(p[1:3]),p[4],p[5],SVector{3}(p[6:8]),p[9])
-
+fsh3D = ( make_sphere3, make_box3, make_6polyprism, make_cyl )
+np_fsh3D = ( 5, 16, 16, 9 )
+# make 2D shapes
 sph2 = make_sphere2(rand(4))
-sph3 = make_sphere3(rand(5))
 bx2 = make_box2(rand(9))
-bx3 = make_box3(rand(16))
 pgn5 = make_5gon(rand(11))
 pgn10 = make_10gon(rand(21))
 pgn100 = make_100gon(rand(201))
 rp8 = make_8regpoly(rand(5))
 rp60 = make_regpoly(60,rand(5))
+shapes2D = ( sph2, bx2, pgn5, pgn10, pgn100, rp8, rp60, )
+# make 3D shapes
+sph3 = make_sphere3(rand(5))
+bx3 = make_box3(rand(16))
 ppr6 = make_6polyprism(rand(16))
 cylpr = make_cyl(rand(9))
+shapes3D = ( sph3, bx3, ppr6, cylpr )
 
-##
-using Tullio
-using GeometryPrimitives: signmatrix
-p = rand(20)
-c = SVector{3}(p[1:3])					# c: center
-d = SVector{3}(p[4:6])				# r: "radii" (half span of each axis)
-axes = SMatrix{3,3}(mapreduce(
-    normalize,
-    hcat,
-    eachcol(reshape(p[7:15],(3,3)))),
-)			# axes: box axes
-data = p[16]		
-r = 0.5d
-@tullio axnorm[i] := axes[i,j]^2 |> sqrt
-@tullio p_inv[i,j] := axes[i,j] / axnorm[j]
-# p_inv = axes ./ sqrt.(sum(abs2,axes,dims=1))
-smr = signmatrix(r)
+@testset verbose = true "surfpt_nearby AD Gradients" begin
+    @testset "2D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type $(typeof(sh))" for sh in shapes2D
+        p = rand(2)
+        @test test_AD(x->sum(sum(surfpt_nearby(SVector{2}(x),sh))),p)
+    end
+    @testset "3D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type $(typeof(sh))" for sh in shapes2D
+        p = rand(3)
+        @test test_AD(x->sum(sum(surfpt_nearby(SVector{3}(x),sh))),p)
+    end
+    @testset "3D x-vector gradients of surfpt_nearby(x,shape) for 3D shape type $(typeof(sh))" for sh in shapes3D
+        p = rand(3)
+        @test test_AD(x->sum(sum(surfpt_nearby(SVector{3}(x),sh))),p)
+    end
+    @testset "2D shape parameter gradients of surfpt_nearby(x::SVector{2},shape) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh2D,np_fsh2D)
+        xy = SVector{2}(rand(2))
+        p = rand(np)
+        @test test_AD(x->sum(sum(surfpt_nearby(xy,fsh(x)))),p)
+    end
+    @testset "2D shape parameter gradients of surfpt_nearby(x::SVector{3},shape) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh2D,np_fsh2D)
+        xyz = SVector{3}(rand(3))
+        p = rand(np)
+        @test test_AD(x->sum(sum(surfpt_nearby(xyz,fsh(x)))),p)
+    end
+    @testset "3D shape parameter gradients of surfpt_nearby(x::SVector{3},shape) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh3D,np_fsh3D)
+        xyz = SVector{3}(rand(3))
+        p = rand(np)
+        @test test_AD(x->sum(sum(surfpt_nearby(xyz,fsh(x)))),p)
+    end
+end
 
-A = p_inv .* r'
-@show m1 = maximum(abs.(A * smr), dims=2)[:,1]
-@show @tullio (max) m[j] := p_inv[i,k] * r[i] * smr[i,j] nograd=smr
-A2 = [-1.1  2.2 ; -3.3  4.4]
-abs(A2)
-@tullio (max) m[j] := p_inv[i,k] * r[i] * smr[i,j] nograd=smr
-bx_out = Box{3,9,Float64,Float64}(c, 0.5d, SMatrix(inv(p_inv)),c-SVector(m),c+SVector(m),data)
+
+@test test_AD(f_spn_22,p0)
 
 ##
 
@@ -148,51 +171,14 @@ test_fns = [
     f_volfrac31, f_volfrac32, f_volfrac33, 
 ]
 
-function test_AD(f::Function,p;nFD=5)
-    primal  =   f(p)
-    gr_RM   =   first(Zygote.gradient(f,p))
-    gr_FM   =   ForwardDiff.gradient(f,p)
-    gr_FD   =   first(FiniteDifferences.grad(central_fdm(nFD,1),f,p))
-    return isapprox(gr_RM,gr_FD,rtol=1e-4) && isapprox(gr_RM,gr_FD,rtol=1e-4)
-end
 
-@test test_AD(f_spn_22,p0)
 
 test_AD(p0) do p
     sum(sum(surfpt_nearby(SVector{2}(p[18:19]),demo_shapes2D(p)[3])))
 end
 
-@testset "Gradients" begin
-    @testset "surfpt_nearby" begin
-        @testset "Array{$T}" for T in [Float64, ComplexF64]
-            @testset "size = $sz, dims = $dims" for (sz, dims) in [
-                ((12,), :), ((12,), 1),
-                ((3,4), 1), ((3,4), 2), ((3,4), :), ((3,4), [1,2]),
-                ((3,4,1), 1), ((3,2,2), 3), ((3,2,2), 2:3),
-                ]
-                
-                x = randn(T, sz)
-                test_rrule(prod, x; fkwargs=(dims=dims,), check_inferred=true)
-                x[1] = 0
-                test_rrule(prod, x; fkwargs=(dims=dims,), check_inferred=true)
-                x[5] = 0
-                test_rrule(prod, x; fkwargs=(dims=dims,), check_inferred=true)
-                x[3] = x[7] = 0  # two zeros along some slice, for any dims
-                test_rrule(prod, x; fkwargs=(dims=dims,), check_inferred=true)
-
-                if ndims(x) == 3
-                    xp = PermutedDimsArray(x, (3,2,1))  # not a StridedArray
-                    test_rrule(prod, xp; fkwargs=(dims=dims,), check_inferred=true)
-                end
-            end
-        end
-    end
-end
-
-map(test_fns) do f
-    
-end
-
+sum(sum(surfpt_nearby(SVector{2}(p[18:19]),demo_shapes2D(p)[3])))
+p0 = rand(20)
 Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{2}(p[18:19]),demo_shapes2D(p)[1]))),p0)
 Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{3}(p[18:20]),demo_shapes2D(p)[1]))),p0)
 Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{2}(p[18:19]),demo_shapes2D(p)[2]))),p0)
@@ -443,3 +429,31 @@ grsm1s2          =   Zygote.gradient(p2) do p
     return sum(smval)
 end
 
+
+
+
+##
+using Tullio
+using GeometryPrimitives: signmatrix
+p = rand(20)
+c = SVector{3}(p[1:3])					# c: center
+d = SVector{3}(p[4:6])				# r: "radii" (half span of each axis)
+axes = SMatrix{3,3}(mapreduce(
+    normalize,
+    hcat,
+    eachcol(reshape(p[7:15],(3,3)))),
+)			# axes: box axes
+data = p[16]		
+r = 0.5d
+@tullio axnorm[i] := axes[i,j]^2 |> sqrt
+@tullio p_inv[i,j] := axes[i,j] / axnorm[j]
+# p_inv = axes ./ sqrt.(sum(abs2,axes,dims=1))
+smr = signmatrix(r)
+
+A = p_inv .* r'
+@show m1 = maximum(abs.(A * smr), dims=2)[:,1]
+@show @tullio (max) m[j] := p_inv[i,k] * r[i] * smr[i,j] nograd=smr
+A2 = [-1.1  2.2 ; -3.3  4.4]
+abs(A2)
+@tullio (max) m[j] := p_inv[i,k] * r[i] * smr[i,j] nograd=smr
+bx_out = Box{3,9,Float64,Float64}(c, 0.5d, SMatrix(inv(p_inv)),c-SVector(m),c+SVector(m),data)
