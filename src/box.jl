@@ -36,13 +36,20 @@ function Box(c::SVector{N,T},
 	@tullio axnorm[i] := axes[i,j]^2 |> sqrt
 	@tullio p_inv[i,j] := axes[i,j] / axnorm[j]
 	# p_inv = axes ./ sqrt.(sum(abs2,axes,dims=1))
-	smr = signmatrix(r)
-	# @tullio (max) m[j] := p_inv[i,k] * r[i] * smr[i,j] nograd=smr
-    # A1 = mapreduce(*,hcat,eachcol(p_inv),r)
-    # m_in = map(abs,A1*smr)
-    # @show @tullio (max) m_out[j] := m_in[i,j]
+	smr = signmatrix(r)	
+    # Original code: (broadcasting bad for reverse mode AD, maximum(...,dims=...) breaks with Zygote
+    # A = p_inv .* r'
+    # m = maximum(abs.(A * smr), dims=2)[:,1]
+
+    # New version 1, avoid broadcast with maps, reduce with Tullio
+    # A = mapreduce(*,hcat,eachcol(p_inv),r)
+    # m_in = map(abs,A*smr)
+    # @show @tullio (max) m_out[i] := m_in[i,j]
+    
+    # New version 2, keep broadcasts, reduce with Tullio
     A = p_inv .* r'
-    m = maximum(abs.(A * smr), dims=2)[:,1]
+    m_in = abs.(A * smr)
+    @tullio (max) m[i] := m_in[i,j]   
     Box{N,N*N,D,T}(c, 0.5d, SMatrix{N,N}(inv(p_inv)),c-SVector{N}(m),c+SVector{N}(m),data)
 end
 
@@ -95,11 +102,13 @@ f_signs(d) =  sign.(d)'
 
 function surfpt_nearby(x::SVector{N,T}, b::Box{N}) where {N,T<:Real}
     ax = inv(b.p)  # axes: columns are unit vectors
-	n0 = @inbounds b.p ./  [ sqrt(b.p[1,1]^2 + b.p[1,2]^2) sqrt(b.p[2,1]^2 + b.p[2,2]^2)  ]
+    # p_rownorm = map(norm,eachrow(bx.p))
+    @tullio p_rownorm[i] := b.p[i,j]^2 |> sqrt
+    @tullio n0[i,j] := b.p[i,j] / p_rownorm[i] # normalize
     d= Array(b.p * (x - b.c))
     cosθ = diag(n0*ax)
-	n = n0 .* f_signs(d)
-    # n = n0 .* copysign.(1.0,d)' #f_signs(d)
+    n = n0 .* f_signs(d)
+	# n = n0 .* copysign.(1.0,d) 
     absd = abs.(d)
     ∆ = (b.r .- absd) .* cosθ
     onbnd = f_onbnd(b,absd)

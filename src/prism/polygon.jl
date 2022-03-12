@@ -35,67 +35,44 @@ end
 # function Polygon(v::AbstractMatrix{T}, data::D=nothing) where {D,T<:Real}
 #     K = size(v,1);
 
+function polygon_vert_sortperms(v::SMatrix{K,2,T}) where {K,T}
+    vm  =   sum(v,dims=1)/K
+    w   =   mapreduce(x->x'-vm,vcat,eachrow(v)) # v in center-of-mass coordinates
+    ϕ   =   map(x->mod(atan(last(x),first(x)),2π),eachrow(w))   # SVector{K}: angle of vertices between 0 and 2π; 
+	return sortperm(ϕ)
+end
+ChainRulesCore.@non_differentiable polygon_vert_sortperms(::Any)
 
 function ∆ϕ(∆v::SMatrix{K,2,<:Real}) where K
 	# Calculate the increases in angle between neighboring edges.
-	∆z = ∆v[:,1] + im * ∆v[:,2]  # SVector{K}: edge directions as complex numbers
-	icurr = ntuple(identity, Val(K-1))
-	inext = ntuple(x->x+1, Val(K-1))
-	return angle.(∆z[SVector(inext)] ./ ∆z[SVector(icurr)])  # angle returns value between -π and π
+    ∆z = ∆v[:,1] + im * ∆v[:,2]  # SVector{K}: edge directions as complex numbers
+    return map(zpair->angle(first(zpair)/last(zpair)),zip(∆z[2:K],∆z[1:(K-1)])) # angle returns value between -π and π
 end
-
-function sort_v_if_needed(v::SMatrix{K,2,T}) where {K,T}
-	w = v .- mean(v, dims=1)  # v in center-of-mass coordinates
-	ϕ = mod.(atan.(w[:,2], w[:,1]), 2π)  # SVector{K}: angle of vertices between 0 and 2π; `%` does not work for negative angle
-	if !issorted(ϕ)	# TODO: make sort_verts shuffling fn with AD rules, currently unsorted verts would break differentiability
-		# Do this only when ϕ is not sorted, because the following uses allocations.
-		ind = MVector{K}(sortperm(ϕ))  # sortperm(::SVector) currently returns Vector, not MVector
-		v = v[ind,:]  # SVector{K}: sorted v
-	end
-end
+ChainRulesCore.@non_differentiable ∆ϕ(::Any) # not true, but this fn is only used to check vertices correspond convex polygon
 
 function n_norm(dv)
 	local one_mone = [1, -1]
 	@tullio n[i,j] := dv[i,3-j] * $one_mone[j] / sqrt( dv[i,1]^2 + dv[i,2]^2 ) nograd=one_mone
 end
 
-n_norm_fwd(dv) = n_norm(dv) # Zygote.forwarddiff(n_norm,dv)
-
-ChainRulesCore.@non_differentiable ∆ϕ(::Any)
-
-function Polygon(v::SMatrix{K,2,T}, data::D=nothing) where {K,D,T<:Real}
-    # Sort the vertices in the counter-clockwise direction
-
-    # w = v .- mean(v, dims=1)  # v in center-of-mass coordinates
-    # ϕ = mod.(atan.(w[:,2], w[:,1]), 2π)  # SVector{K}: angle of vertices between 0 and 2π; `%` does not work for negative angle
-    # if !issorted(ϕ)	# TODO: make sort_verts shuffling fn with AD rules, currently unsorted verts would break differentiability
-    #     # Do this only when ϕ is not sorted, because the following uses allocations.
-    #     ind = MVector{K}(sortperm(ϕ))  # sortperm(::SVector) currently returns Vector, not MVector
-    #     v = v[ind,:]  # SVector{K}: sorted v
-    # end
+function Polygon(v_in::SMatrix{K,2,T}, data::D=nothing) where {K,D,T<:Real}
+    clockwise_sortperms = polygon_vert_sortperms(v_in)
+    if isequal(clockwise_sortperms,collect(1:K)) # if needed, sort the vertices in the counter-clockwise direction
+        v = v_in
+    else
+        v = v_in[clockwise_sortperms,:]
+	end
     ∆v = v - circshift(v,1)
-    # Check all the angle increases are positive.  If they aren't, the polygon is not convex.
-    # all(∆ϕ(∆v) .> 0) || throw("v = $v should represent vertices of convex polygon.")
-
-	# outward normal directions to edges
-	# one_mone = [	0. 1.
-	# 				-1. 0. ]# SMatrix{2,2}(0., 1., -1., 0.)
-    # n0 = ∆v * one_mone #[∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
-	# @tullio nnorm[k] := ∆v[k,j]^2 |> sqrt
-	# @tullio n[k,j] := n0[k,j] / nnorm[k] # n = n0 ./ hypot.(n0[:,1],n0[:,2])  # normalize
-	# n0 = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
-    # n = n0 ./ hypot.(n0[:,1],n0[:,2])  # normalize
-
-	# n = n_norm(∆v)
-	n = n_norm_fwd(∆v)
+    # ChainRulesCore.ignore_derivatives() do
+    #     @assert all(∆ϕ(∆v) .> 0)  "v = $v must represent vertices of convex polygon, but v seems non-convex"
+    # end
+    n0 = ∆v * [	 0.     -1.     ;   1.     0.  ] # = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
+	@tullio nnorm[k] := ∆v[k,j]^2 |> sqrt
+	@tullio n[k,j] := n0[k,j] / nnorm[k] # normalize
 	l = l_bnds_poly(v)
 	u = u_bnds_poly(v)
 	sz = u-l
-	# rbnd = Zygote.@ignore(max(sz.data[1],sz.data[2])*Base.rtoldefault(T))
     rbnd = max(sz.data[1],sz.data[2])*Base.rtoldefault(T)
-	# TODO: Ask why `bounds(::Polygon)` was prev. recomputed each time and why
-	# the "size" (`sz`) in find_surfpt_nearby(Polygon was computed as abs.(l-u)?
-	# Hopefully this doesn't break something or hurt performance
     return Polygon{K,2K,D,T}(v,SMatrix{K,2,T}(n),l,u,sz,rbnd,data) # Polygon{K,2K,D}(v,n,data)
 end
 
@@ -207,11 +184,15 @@ function regpoly(::Val{K},  # number of vertices
                  θ::Real=π/2,  # angle from +x-direction towards first vertex; π/2 corresponds to +y-direction
                  c::SVector{2,T}=SVector{2}(0.0,0.0),  # center location
                  data=nothing) where {K,T<:Real}
-    ∆θ = 2π / K
-
-    θs = θ .+ ∆θ .* SVector(ntuple(k->k-1, Val(K)))  # SVector{K}: angles of vertices
-    v = c' .+ r .* [cos.(θs) sin.(θs)]  # SMatrix{K,2}: locations of vertices
-
+    # Original code that breaks Zygote AD:
+    # ∆θ = 2π / K
+    # θs = θ .+ ∆θ .* SVector(ntuple(k->k-1, Val(K)))  # SVector{K}: angles of vertices
+    # v = c' .+ r .* [cos.(θs) sin.(θs)]  # SMatrix{K,2}: locations of vertices
+    # New Zygote-friendly code calculating the same thing 
+    θs = (θ * ones(K)) + collect(0:(K-1))*(2π/K)  
+    v = mapreduce(vcat,θs) do tt
+        transpose(c + SVector{2}(reverse(sincos(tt))...)*r )
+    end
     return Polygon(v, data)
 end
 

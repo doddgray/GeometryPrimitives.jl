@@ -5,14 +5,14 @@
 
 export volfrac
 
-const X, Y, Z = 1, 2, 3
-const XYZ, YZX, ZXY = (X,Y,Z), (Y,Z,X), (Z,X,Y)
-const UVW = YZX, ZXY, XYZ
-const N, P = 1, 2  # negative, positive
-const NP = (N, P)
+# const X, Y, Z = 1, 2, 3
+# const XYZ, YZX, ZXY = (X,Y,Z), (Y,Z,X), (Z,X,Y) # ((1, 2, 3), (2, 3, 1), (3, 1, 2))
+# const UVW = YZX, ZXY, XYZ # ((2, 3, 1), (3, 1, 2), (1, 2, 3))
+# const N, P = 1, 2  # negative, positive
+# const NP = (N, P) # (1,2)
 
-corner(vxl::NTuple{2,SVector{3,<:Number}}, sx::Integer, sy::Integer, sz::Integer) =
-    SVector(vxl[sx][X], vxl[sy][Y], vxl[sz][Z])
+corner(vxl::NTuple{2,SVector{3,<:Number}}, sx::Integer, sy::Integer, sz::Integer) = SVector{3}(vxl[sx][1], vxl[sy][2], vxl[sz][3])
+    # SVector(vxl[sx][X], vxl[sy][Y], vxl[sz][Z])
 
 # Calculate the bit array that indicates corner contained-ness.
 #
@@ -26,7 +26,8 @@ function corner_bits(vxl::NTuple{2,SVector{3,<:Number}},  # two ends of solid di
     cbits = 0x00
     bit = 0x01
     n_on = 0
-    for sz = NP, sy = NP, sx = NP
+    # for sz = NP, sy = NP, sx = NP
+    for sz in (1,2), sy in (1,2), sx in (1,2)
         r = corner(vxl, sx, sy, sz)
         nr = nout⋅r
         if nr ≤ nr₀  # corner is contained and not on boundary (nout is outward normal)
@@ -54,31 +55,65 @@ end
 # which direction those edges lie.
 function edgedir_quadsect(cbits::UInt8)
     if cbits==0x0F || cbits==~0x0F
-        dir = Z
+        dir = 3 #dir = Z
     elseif cbits==0x33 || cbits==~0x33
-        dir = Y
+        dir = 2 # dir = Y
     else
         @assert cbits==0x55 || cbits==~0x55
-        dir = X
+        dir = 1 #dir = X
     end
 
     return dir
 end
 
+ChainRulesCore.@non_differentiable corner_bits(::Any,::Any,::Any)
+ChainRulesCore.@non_differentiable isquadsect(::Any)
+ChainRulesCore.@non_differentiable edgedir_quadsect(::Any)
+
 # Return the volume fraction when the plane croses a set of four parallel edges.
 function rvol_quadsect(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Real}, nr₀, cbits::UInt8)
+    
     w = edgedir_quadsect(cbits)
-    ∆w = vxl[P][w] - vxl[N][w]
-
-    u, v, _w = UVW[w]
-    nu, nv, nw = nout[u], nout[v], nout[w]
-    mean_cepts = 4nr₀
-    for sv = NP, su = NP
-        mean_cepts -= nu*vxl[su][u] + nv*vxl[sv][v]
+    # ∆w = vxl[P][w] - vxl[N][w]
+    ∆w = vxl[2][w] - vxl[1][w]
+    
+    # Original code:
+    # local UVW = ((2, 3, 1), (3, 1, 2), (1, 2, 3)) # YZX, ZXY, XYZ
+    # u, v, _w = UVW[w]
+    
+    # new code not reliant on weird UNW constant
+    if isequal(w,1)
+        u = 2
+        v = 3
+        _w = 1
+    elseif isequal(w,2)
+        u = 3
+        v = 1
+        _w = 2
+    elseif isequal(w,3)
+        u = 1
+        v = 2
+        _w = 3
+    else
+        println("bad return value from edgedir_quadsect in rvol_quadsect: w = $w")
+        u = 1
+        v = 2
+        _w = 3
     end
-    mean_cepts /=  nw * 4∆w
+    nu, nv, nw = nout[u], nout[v], nout[w]
+    # Original mean_cepts code:
+    # mean_cepts = 4*nr₀
+    # # for sv = NP, su = NP
+    # for sv in (1,2), su in (1,2)
+    #     mean_cepts -= nu*vxl[su][u] + nv*vxl[sv][v]
+    # end
+    # mean_cepts /=  nw * 4*∆w
 
-    sw = nw>0 ? N : P  # nw cannot be 0
+    # non-mutating mean_cepts rewrite:
+    mean_cepts = ( 4*nr₀ - ( nu*vxl[1][u] + nv*vxl[1][v] ) - ( nu*vxl[2][u] + nv*vxl[1][v] ) - ( nu*vxl[1][u] + nv*vxl[2][v] ) - ( nu*vxl[2][u] + nv*vxl[2][v] ) ) / ( nw * 4*∆w ) 
+    
+    # sw = nw>0 ? N : P  # nw cannot be 0
+    sw = nw>0 ? 1 : 2  # nw cannot be 0
     return abs(mean_cepts - vxl[sw][w]/∆w)
 end
 
@@ -89,11 +124,13 @@ end
 # cbits.
 function rvol_gensect(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Real}, nr₀::Real, cbits::UInt8)
     s = (nout.<0) .+ 1
-    c = corner(vxl, s[X], s[Y], s[Z])  # corner coordinates
-    ∆ = vxl[P] - vxl[N]  # vxl edges
+    # c = corner(vxl, s[X], s[Y], s[Z])  # corner coordinates
+    # ∆ = vxl[P] - vxl[N]  # vxl edges
+    c = corner(vxl, s[1], s[2], s[3])  # corner coordinates
+    ∆ = vxl[2] - vxl[1]  # vxl edges
     nc = nout .* c
     #rmax0, rmid0, rmin0 =  abs.(((nr₀-sum(nc)) .+ nc) ./ nout - c) ./ ∆ # (lengths from corner to intercetps) / (voxel edges)
-    nc_sum = nc[1] + nc[2] + nc[3]
+    nc_sum = sum(nc) #nc[1] + nc[2] + nc[3]
     # rs =  (((nr0-nc_sum) .+ nc) ./ nout - c) ./ ∆
     rmax0 =  abs(((nr₀-nc_sum) + nc[1]) / nout[1] - c[1]) / ∆[1]
     rmid0 =  abs(((nr₀-nc_sum) + nc[2]) / nout[2] - c[2]) / ∆[2]
@@ -182,15 +219,17 @@ function rvol_gensect(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Real
     if !isinf(rmax)
         tmax = 1 - 1/rmax
         rvol_core0 = 1 + tmax + tmax^2
+        tmid = 1 - 1/rmid
         if rmid > 1
-            tmid = 1 - 1/rmid
+            # tmid = 1 - 1/rmid
             rvol_core1 = rvol_core0 - ( rmax * tmid^3 )
         else
             rvol_core1 = rvol_core0
         end
 
+        tmin = 1 - 1/rmin
         if rmin > 1
-            tmin = 1 - 1/rmin
+            # tmin = 1 - 1/rmin
             rvol_core = rvol_core1 - ( rmax * tmin^3 )
         else
             rvol_core = rvol_core1
@@ -273,15 +312,23 @@ end
 # - Turn the nout and r₀ into 3D vectors on the xy-plane.
 # - Turn the pixel into a 3D voxel whose base is the pixel and the height is 1.
 # - Pass these 3D objects to volfrac() for 3D.
-volfrac(vxl::NTuple{2,SVector{2,<:Number}}, nout::SVector{2,<:Real}, r₀::SVector{2,<:Real}) =
-    volfrac((SVector(vxl[N][1], vxl[N][2], 0), SVector(vxl[P][1], vxl[P][2], 1)),
+function volfrac(vxl::NTuple{2,SVector{2,<:Number}}, nout::SVector{2,<:Real}, r₀::SVector{2,<:Real}) 
+    # volfrac((SVector(vxl[N][1], vxl[N][2], 0), SVector(vxl[P][1], vxl[P][2], 1)),
+    #         SVector(nout[1], nout[2], 0),
+    #         SVector(r₀[1], r₀[2], 0))
+    volfrac((SVector(vxl[1][1], vxl[1][2], 0), SVector(vxl[2][1], vxl[2][2], 1)),
             SVector(nout[1], nout[2], 0),
             SVector(r₀[1], r₀[2], 0))
+end
 
-volfrac(vxl::NTuple{2,<:AbstractVector}, nout::AbstractVector{<:Real}, r₀::AbstractVector{<:Real}) =
-    volfrac((SVector(vxl[N][1],vxl[N][2],0), SVector(vxl[P][1],vxl[P][2],1)),
+function volfrac(vxl::NTuple{2,<:AbstractVector}, nout::AbstractVector{<:Real}, r₀::AbstractVector{<:Real}) 
+    # volfrac((SVector(vxl[N][1],vxl[N][2],0), SVector(vxl[P][1],vxl[P][2],1)),
+    #         SVector(nout[1], nout[2], 0),
+    #         SVector(r₀[1], r₀[2], 0))
+    volfrac((SVector(vxl[1][1],vxl[1][2],0), SVector(vxl[2][1],vxl[2][2],1)),
             SVector(nout[1], nout[2], 0),
             SVector(r₀[1], r₀[2], 0))
+end
 
 # volfrac() for 1D voxel (= line segment).
 # - Turn the nout and r₀ into 3D vectors along the z-axis
@@ -290,7 +337,11 @@ volfrac(vxl::NTuple{2,<:AbstractVector}, nout::AbstractVector{<:Real}, r₀::Abs
 #
 # volfrac() for 1D can be implemented from scratch without calling volfrac() for 3D, but
 # let's keep it this way for now.
-volfrac(vxl::NTuple{2,SVector{1,<:Number}}, nout::SVector{1,<:Real}, r₀::SVector{1,<:Real}) =
+function volfrac(vxl::NTuple{2,SVector{1,<:Number}}, nout::SVector{1,<:Real}, r₀::SVector{1,<:Real}) 
+    # volfrac((SVector(0, 0, vxl[N][1]), SVector(1, 1, vxl[P][1])),
+    #         SVector(0, 0, nout[1]),
+    #         SVector(0, 0, r₀[1]))
     volfrac((SVector(0, 0, vxl[N][1]), SVector(1, 1, vxl[P][1])),
             SVector(0, 0, nout[1]),
             SVector(0, 0, r₀[1]))
+end

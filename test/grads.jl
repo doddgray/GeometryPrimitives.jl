@@ -1,6 +1,16 @@
 using LinearAlgebra, StaticArrays, GeometryPrimitives, Test
+circpts(n) = mapreduce(x->SVector{2}(reverse(sincospi(x)))',vcat,range(0.05,1.95,length=n+1)[1:n])
+rand_verts(noise,n) = mapreduce(x->((1.0 + noise*rand())*SVector{2}(reverse(sincospi(x))))',vcat,range(0.05,1.95,length=n+1)[1:n])
+using ChainRulesCore
+ChainRulesCore.@non_differentiable circpts(::Any)
 using ChainRules, Zygote, FiniteDifferences, ForwardDiff
-using GeometryPrimitives: sort_v_if_needed
+# using CairoMakie
+
+# xy1,v1 = SVector{2}(rand(2)),rand_verts(0.1,5)
+# p1 = vcat(vec(xy1),vec(v1))
+
+# lines(eachcol(circpts(20))...)
+# lines(eachcol(SMatrix{10,2}(0.3*rand(20))+circpts(10))...)
 
 function test_AD(f::Function,p;nFD=5)
     primal  =   f(p)
@@ -57,13 +67,13 @@ function make_box2(p)   # length(p) should be 9
     )
 end
 # 2D polygon functions
-make_5gon(p) = Polygon(sort_v_if_needed(SMatrix{5,2}(p[1:10])),p[11])
-make_10gon(p) = Polygon(sort_v_if_needed(SMatrix{10,2}(p[1:20])),p[21])
-make_100gon(p) = Polygon(sort_v_if_needed(SMatrix{100,2}(p[1:200])),p[201])
+make_5gon(p) = Polygon(SMatrix{5,2}(reshape(p[1:10],(5,2)))*0.3+circpts(5),p[11])
+make_10gon(p) = Polygon(SMatrix{10,2}(reshape(p[1:20],(10,2)))*0.1+circpts(10),p[21])
+make_100gon(p) = Polygon(SMatrix{100,2}(reshape(p[1:200],(100,2)))*0.01+circpts(100),p[201])
 make_8regpoly(p) = regpoly(Val(8),first(p),p[2],SVector{2}(p[3:4]),p[5])
 make_regpoly(n,p) = regpoly(n,first(p),p[2],SVector{2}(p[3:4]),p[5])
 fsh2D = ( make_sphere2, make_box2, make_5gon, make_10gon, make_100gon, make_8regpoly)
-np_fsh2D = ( 11, 21, 201, 5, 5 )
+np_fsh2D = ( 4, 9, 11, 21, 201, 5 )
 # 3D Sphere and Box functions
 make_sphere3(p) = Sphere(SVector{3}(p[1:3]),p[4],p[5])
 function make_box3(p)   # length(p) should be 9 
@@ -79,61 +89,178 @@ function make_box3(p)   # length(p) should be 9
     )
 end
 # 3D prism-related shape functions
-make_6polyprism(p) = PolygonalPrism(SVector{3}(p[1:3]),sort_v_if_needed(SMatrix{6,2}(p[4:15])),p[16])
+make_6polyprism(p) = PolygonalPrism(SVector{3}(p[1:3]),SMatrix{6,2}(p[4:15]),p[16])
 make_cyl(p) = Cylinder(SVector{3}(p[1:3]),p[4],p[5],SVector{3}(p[6:8]),p[9])
 fsh3D = ( make_sphere3, make_box3, make_6polyprism, make_cyl )
 np_fsh3D = ( 5, 16, 16, 9 )
-# make 2D shapes
-sph2 = make_sphere2(rand(4))
-bx2 = make_box2(rand(9))
-pgn5 = make_5gon(rand(11))
-pgn10 = make_10gon(rand(21))
-pgn100 = make_100gon(rand(201))
-rp8 = make_8regpoly(rand(5))
-rp60 = make_regpoly(60,rand(5))
-shapes2D = ( sph2, bx2, pgn5, pgn10, pgn100, rp8, rp60, )
-# make 3D shapes
-sph3 = make_sphere3(rand(5))
-bx3 = make_box3(rand(16))
-ppr6 = make_6polyprism(rand(16))
-cylpr = make_cyl(rand(9))
-shapes3D = ( sph3, bx3, ppr6, cylpr )
+# make shapes with random parameters
+shapes2D = map((f,np)->f(rand(np)),zip(fsh2D,np_fsh2D))
+shapes3D = map((f,np)->f(rand(np)),zip(fsh3D,np_fsh3D))
+(sph2, bx2, pgn5, pgn10, pgn100, rp8) = shapes2D
+(sph3, bx3, ppr6, cylpr) = shapes3D
 
-@testset verbose = true "surfpt_nearby AD Gradients" begin
-    @testset "2D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type $(typeof(sh))" for sh in shapes2D
-        p = rand(2)
-        @test test_AD(x->sum(sum(surfpt_nearby(SVector{2}(x),sh))),p)
+# # make 2D shapes
+# sph2 = make_sphere2(rand(4))
+# bx2 = make_box2(rand(9))
+# pgn5 = make_5gon(rand(11))
+# pgn10 = make_10gon(rand(21))
+# pgn100 = make_100gon(rand(201))
+# rp8 = make_8regpoly(rand(5))
+# rp60 = make_regpoly(60,rand(5))
+# shapes2D = ( sph2, bx2, pgn5, pgn10, pgn100, rp8, rp60, )
+
+# # make 3D shapes
+# sph3 = make_sphere3(rand(5))
+# bx3 = make_box3(rand(16))
+# ppr6 = make_6polyprism(rand(16))
+# cylpr = make_cyl(rand(9))
+# shapes3D = ( sph3, bx3, ppr6, cylpr )
+# shapes3D = map((f,np)->f(rand(np)),zip(fsh3D,np_fsh3D))
+# (sph2, bx2, pgn5, pgn10, pgn100, rp8, rp60, sph3, bx3, ppr6, cylpr)map((f,np)->f(rand(np)),zip(vcat(fsh2D,fsh3D),vcat(np_fsh2D,np_fsh3D)))
+
+Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{2}(p[12:13]),make_5gon(p[1:11])))),rand(13))
+Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{3}(p[12:13]...,0.0)[1:2],make_5gon(p[1:11])))),rand(13))
+test_AD(p->sum(sum(surfpt_nearby(SVector{2}(p[12:13]),make_5gon(p[1:11])))),rand(13))
+
+@testset verbose = true "GeometryPrimitives AD Testing" begin
+    @testset verbose = true "surfpt_nearby AD Gradients" begin
+        @testset "2D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type $(typeof(sh))" for sh in shapes2D
+            p = rand(2)
+            @test test_AD(x->sum(sum(surfpt_nearby(SVector{2}(x),sh))),p)
+        end
+        # @testset "3D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type $(typeof(sh))" for sh in shapes2D
+        #     p = rand(3)
+        #     @test test_AD(x->sum(sum(surfpt_nearby(SVector{3}(x),sh))),p)
+        # end
+        @testset "3D x-vector gradients of surfpt_nearby(x,shape) for 3D shape type $(typeof(sh))" for sh in shapes3D
+            p = rand(3)
+            @test test_AD(x->sum(sum(surfpt_nearby(SVector{3}(x),sh))),p)
+        end
+        @testset "2D shape parameter gradients of surfpt_nearby(x::SVector{2},shape) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh2D,np_fsh2D)
+            xy = SVector{2}(rand(2))
+            p = rand(np)
+            @test test_AD(x->sum(sum(surfpt_nearby(xy,fsh(x)))),p)
+        end
+        # @testset "2D shape parameter gradients of surfpt_nearby(x::SVector{3},shape) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh2D,np_fsh2D)
+        #     xyz = SVector{3}(rand(3))
+        #     p = rand(np)
+        #     @test test_AD(x->sum(sum(surfpt_nearby(xyz,fsh(x)))),p)
+        # end
+        @testset "3D shape parameter gradients of surfpt_nearby(x::SVector{3},shape) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh3D,np_fsh3D)
+            xyz = SVector{3}(rand(3))
+            p = rand(np)
+            @test test_AD(x->sum(sum(surfpt_nearby(xyz,fsh(x)))),p)
+        end
     end
-    @testset "3D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type $(typeof(sh))" for sh in shapes2D
-        p = rand(3)
-        @test test_AD(x->sum(sum(surfpt_nearby(SVector{3}(x),sh))),p)
-    end
-    @testset "3D x-vector gradients of surfpt_nearby(x,shape) for 3D shape type $(typeof(sh))" for sh in shapes3D
-        p = rand(3)
-        @test test_AD(x->sum(sum(surfpt_nearby(SVector{3}(x),sh))),p)
-    end
-    @testset "2D shape parameter gradients of surfpt_nearby(x::SVector{2},shape) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh2D,np_fsh2D)
-        xy = SVector{2}(rand(2))
-        p = rand(np)
-        @test test_AD(x->sum(sum(surfpt_nearby(xy,fsh(x)))),p)
-    end
-    @testset "2D shape parameter gradients of surfpt_nearby(x::SVector{3},shape) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh2D,np_fsh2D)
-        xyz = SVector{3}(rand(3))
-        p = rand(np)
-        @test test_AD(x->sum(sum(surfpt_nearby(xyz,fsh(x)))),p)
-    end
-    @testset "3D shape parameter gradients of surfpt_nearby(x::SVector{3},shape) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh3D,np_fsh3D)
-        xyz = SVector{3}(rand(3))
-        p = rand(np)
-        @test test_AD(x->sum(sum(surfpt_nearby(xyz,fsh(x)))),p)
+    @testset verbose = true "volfrac AD Gradients" begin
+        @testset "2D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 2D shape type $(typeof(sh))" for sh in shapes2D
+            p = rand(2)
+            @test test_AD(x->volfrac((SVector{2}(x)-SVector{2}(1.0,1.0),SVector{2}(x)+SVector{2}(1.0,1.0)),reverse(surfpt_nearby(SVector{2}(x),sh))...),p)
+        end
+        # @testset "3D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 2D shape type $(typeof(sh))" for sh in shapes2D
+        #     p = rand(3)
+        #     @test test_AD(x->volfrac((SVector{3}(x)-SVector{3}(1.0,1.0,1.0),SVector{3}(x)+SVector{3}(1.0,1.0,1.0)),reverse(surfpt_nearby(SVector{3}(x),sh))...),p)
+        # end
+        @testset "3D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 3D shape type $(typeof(sh))" for sh in shapes3D
+            p = rand(3)
+            @test test_AD(x->volfrac((SVector{3}(x)-SVector{3}(1.0,1.0,1.0),SVector{3}(x)+SVector{3}(1.0,1.0,1.0)),reverse(surfpt_nearby(SVector{3}(x),sh))...),p)
+        end
+        @testset "2D shape parameter gradients of volfrac((x::SVector{2}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh2D,np_fsh2D)
+            xy = SVector{2}(rand(2))
+            p = rand(np)
+            @test test_AD(x->volfrac((xy-SVector{2}(1.0,1.0),xy+SVector{2}(1.0,1.0)),reverse(surfpt_nearby(xy,fsh(x)))...),p)
+        end
+        # @testset "2D shape parameter gradients of volfrac((x::SVector{3}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh2D,np_fsh2D)
+        #     xyz = SVector{3}(rand(3))
+        #     p = rand(np)
+        #     @test test_AD(x->volfrac((xyz-SVector{3}(1.0,1.0,1.0),xyz+SVector{3}(1.0,1.0,1.0)),reverse(surfpt_nearby(xyz,fsh(x)))...),p)
+        # end
+        @testset "3D shape parameter gradients of volfrac((x::SVector{3}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn $fsh with $np params" for (fsh,np) in zip(fsh3D,np_fsh3D)
+            xyz = SVector{3}(rand(3))
+            p = rand(np)
+            @test test_AD(x->volfrac((xyz-SVector{3}(1.0,1.0,1.0),xyz+SVector{3}(1.0,1.0,1.0)),reverse(surfpt_nearby(xyz,fsh(x)))...),p)
+        end
     end
 end
 
+##
 
-@test test_AD(f_spn_22,p0)
+
+##
+Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{3}(p[6:8]),make_sphere3(p[1:5])))),rand(8))
+test_AD(p->sum(sum(surfpt_nearby(SVector{3}(p[6:8]),make_sphere3(p[1:5])))),rand(8))
+vf_sphere3(p) = volfrac((SVector{3}(p[6:8])-SVector{3}(0.1,0.1,0.1),SVector{3}(p[6:8])+SVector{3}(0.1,0.1,0.1)),reverse(surfpt_nearby(SVector{3}(p[6:8]),make_sphere3(p[1:5])))...)
+Zygote.gradient(vf_sphere3,rand(8))
+##
+f = vf_sphere3
+# p = [0., 0., 0., 1.0, 2.2,  0.99, 0.0, 0.0] + 0.01*rand(8)
+# p = [0., 0., 0., 1.0, 2.2,  1.01, 0.0, 0.0] + 0.01*rand(8)
+# p = [0., 0., 0., 1.0, 2.2,  0.0, 0.99, 0.0] + 0.01*rand(8)
+# p = [0., 0., 0., 1.0, 2.2,  0.0, 1.01, 0.0] + 0.01*rand(8)
+# p = [0., 0., 0., 1.0, 2.2,  0.0, 0.0, 0.92] + 0.01*rand(8)
+# p = [0., 0., 0., 1.0, 2.2,  0.0, 0.0, 1.01] + 0.01*rand(8)
+p = [0., 0., 0., 1.0, 2.2,  0.0, 0.99/sqrt(2), 0.99/sqrt(2)] + 0.01*rand(8)
+# p = [0., 0., 0., 1.0, 2.2,  0.0, 0.99/sqrt(2), 0.99/sqrt(2)] + 0.01*rand(8)
+# p = [0., 0., 0., 1.0, 2.2,  0.99/sqrt(2), 0.99/sqrt(2), 0.0 ] + 0.01*rand(8)
+# p = [0., 0., 0., 1.0, 2.2,  0.0, 0.99/sqrt(2), 0.99/sqrt(2)] + 0.01*rand(8)
+# p = [0., 0., 0., 1.0, 2.2,  0.99/sqrt(3), 0.99/sqrt(3), 0.99/sqrt(3) ] + 0.01*rand(8)
+nFD = 5
+primal  =   f(p)
+gr_RM   =   first(Zygote.gradient(f,p))
+gr_FM   =   ForwardDiff.gradient(f,p)
+gr_FD   =   first(FiniteDifferences.grad(central_fdm(nFD,1),f,p))
+AD_test_ret = isapprox(gr_RM,gr_FD,rtol=1e-4) && isapprox(gr_RM,gr_FD,rtol=1e-4)
+##
+using GeometryPrimitives: corner_bits, rvol_quadsect, rvol_gensect, isquadsect, edgedir_quadsect
+s = make_sphere3(p[1:5])
+x = SVector{3}(p[6:8])
+vxl = (x-SVector{3}(0.1,0.1,0.1),x+SVector{3}(0.1,0.1,0.1))
+r₀, nout = surfpt_nearby(x,s)
+nr₀ = nout⋅r₀
+cbits, n_on = corner_bits(vxl, nout, nr₀)
+n_in = count_ones(cbits)
+isquadsect(cbits)
+w = edgedir_quadsect(cbits)
+if isequal(w,1)
+    u, v, _w = (2, 3, 1)
+elseif isequal(w,2)
+    u, v, _w = (3, 1, 2)
+elseif isequal(w,3)
+    u, v, _w = (1,2,3)
+else
+    println("bad return value from edgedir_quadsect in rvol_quadsect: w = $w")
+end
+∆w = vxl[2][w] - vxl[1][w]
+nu, nv, nw = nout[u], nout[v], nout[w]
+mean_cepts1 = 4*nr₀
+for sv in (1,2), su in (1,2)
+    mean_cepts1 -= nu*vxl[su][u] + nv*vxl[sv][v]
+end
+mean_cepts1 /=  nw * 4*∆w
+mean_cepts = ( 4*nr₀ - ( nu*vxl[1][u] + nv*vxl[1][v] ) - ( nu*vxl[2][u] + nv*vxl[1][v] ) - ( nu*vxl[1][u] + nv*vxl[2][v] ) - ( nu*vxl[2][u] + nv*vxl[2][v] ) ) / ( nw * 4*∆w ) 
+sw = nw>0 ? 1 : 2
+rvqs1 = abs(mean_cepts - vxl[sw][w]/∆w)
+rvolq = rvol_quadsect(vxl, nout, nr₀, cbits)
+rvolg = rvol_gensect(vxl, nout, nr₀, cbits)
+
+##
+X, Y, Z = 1, 2, 3
+XYZ, YZX, ZXY = (X,Y,Z), (Y,Z,X), (Z,X,Y)
+UVW = YZX, ZXY, XYZ
+N, P = 1, 2  # negative, positive
+NP = (N, P)
+
 
 ##
 
+Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{3}(p[17:19]),make_box3(p[1:16])))),rand(19))
+test_AD(p->sum(sum(surfpt_nearby(SVector{3}(p[17:19]),make_box3(p[1:16])))),rand(19))
+Zygote.gradient(p->volfrac((SVector{3}(p[17:19])-SVector{3}(1.0,1.0,1.0),SVector{3}(p[17:19])+SVector{3}(1.0,1.0,1.0)),reverse(surfpt_nearby(SVector{3}(p[17:19]),make_box3(p[1:16])))...),rand(19))
+test_AD(p->volfrac((SVector{3}(p[17:19])-SVector{3}(1.0,1.0,1.0),SVector{3}(p[17:19])+SVector{3}(1.0,1.0,1.0)),reverse(surfpt_nearby(SVector{3}(p[17:19]),make_box3(p[1:16])))...),rand(19))
+
+
+
+##
 p0 = rand(20)
 
 sh1 = demo_shapes2D(p0);
@@ -179,6 +306,27 @@ end
 
 sum(sum(surfpt_nearby(SVector{2}(p[18:19]),demo_shapes2D(p)[3])))
 p0 = rand(20)
+p = rand(20)
+demo_shapes2D(p)[1] |> typeof
+demo_shapes2D(p)[2] |> typeof
+demo_shapes2D(p)[3] |> typeof
+sum(sum(surfpt_nearby(SVector{2}(p[18:19]),demo_shapes2D(p)[1])))
+sum(sum(surfpt_nearby(SVector{2}(p[18:19]),demo_shapes2D(p)[2])))
+sum(sum(surfpt_nearby(SVector{2}(p[18:19]),demo_shapes2D(p)[3])))
+
+
+sort_v_if_needed(SMatrix{10,2}(p10gon[1:20]))
+sort_v_if_needed(SMatrix{10,2}(rand(20)))
+
+p10gon = [sort_v_if_needed(SMatrix{10,2}(rand(20)))...,rand(4)...]
+# p10g1 = Polygon(sort_v_if_needed(SMatrix{10,2}(p10gon[1:20])),p10gon[21])
+circpts(n) = mapreduce(x->SVector{2}(reverse(sincospi(x)))',vcat,range(0,-2,length=n+1)[1:n])
+# lines(eachcol(circpts(20))...)
+lines(eachcol(SMatrix{10,2}(0.3*rand(20))+circpts(10))...)
+p10g1 = Polygon(SMatrix{10,2}(0.3*rand(20))+circpts(10),rand())
+cp10 = circpts(10)
+Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{2}(p[22:23]),Polygon(SMatrix{10,2}(0.3*p[1:20])+cp10,p[21])))),rand(23))
+Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{3}(p[18:20]),make_5gon(p)))),p0)
 Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{2}(p[18:19]),demo_shapes2D(p)[1]))),p0)
 Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{3}(p[18:20]),demo_shapes2D(p)[1]))),p0)
 Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{2}(p[18:19]),demo_shapes2D(p)[2]))),p0)
@@ -214,8 +362,223 @@ gr_volfrac3_RM = Zygote.gradient(f_volfrac3,p0)[1]
 gr_volfrac3_FD = FiniteDifferences.grad(central_fdm(5,1),f_volfrac3,p0)[1]
 @show isapprox(gr_volfrac3_RM,gr_volfrac3_FD,rtol=1e-4)
 
-##
-Zygote.gradient()
+## prototype fixes to Box "max deviation" `m` vector calculation that breaks Zygote AD
+p_inv2=SMatrix{2,2}(rand(2,2))
+r2=SVector{2}(rand(2))
+p_inv3=SMatrix{3,3}(rand(3,3))
+r3=SVector{3}(rand(3))
+using GeometryPrimitives: signmatrix
+@show m2_old = let p_inv=p_inv2, r=r2
+    smr = signmatrix(r)
+    A = p_inv .* r'
+    m = maximum(abs.(A * smr), dims=2)[:,1]
+end
+@show m2_new1 = let p_inv=p_inv2, r=r2
+    smr = signmatrix(r)
+    @tullio (max) m[i] := p_inv[i,k] * r[i] * smr[i,j]
+end
+@show m2_new2 = let p_inv=p_inv2, r=r2
+    smr = signmatrix(r)
+    A = mapreduce(*,hcat,eachcol(p_inv),r)
+    m_in = map(abs,A*smr)
+    @tullio (max) m_out[i] := m_in[i,j]
+end
+@show m2_new3 = let p_inv=p_inv2, r=r2
+    smr = signmatrix(r)
+    A = p_inv .* r'
+    m_in = abs.(A * smr)
+    @tullio (max) m_out[i] := m_in[i,j]
+end
+
+@show m3_old = let p_inv=p_inv3, r=r3
+    smr = signmatrix(r)
+    A = p_inv .* r'
+    m = maximum(abs.(A * smr), dims=2)[:,1]
+end
+@show m3_new1 = let p_inv=p_inv3, r=r3
+    smr = signmatrix(r)
+    @tullio (max) m[i] := p_inv[i,k] * r[i] * smr[i,j]
+end
+@show m3_new2 = let p_inv=p_inv3, r=r3
+    smr = signmatrix(r)
+    A = mapreduce(*,hcat,eachcol(p_inv),r)
+    m_in = map(abs,A*smr)
+    @tullio (max) m_out[i] := m_in[i,j]
+end
+@show m3_new3 = let p_inv=p_inv3, r=r3
+    smr = signmatrix(r)
+    A = p_inv .* r'
+    m_in = abs.(A * smr)
+    @tullio (max) m_out[i] := m_in[i,j]
+end
+## prototype fixes to regpoly constructor vertex matrix `v` calculation that breaks Zygote AD
+K = rand(5:100)
+r = rand()  # distance between center and each vertex
+θ = rand()  # angle from +x-direction towards first vertex; π/2 corresponds to +y-direction
+c = SVector{2}(rand(2)) # center location
+SVector(ntuple(k->k-1, Val(K)))
+@show v_old = let K=K,r=r,θ=θ,c=c
+    ∆θ = 2π / K
+    θs = θ .+ ∆θ .* SVector(ntuple(k->k-1, Val(K)))  # SVector{K}: angles of vertices
+    v = c' .+ r .* [cos.(θs) sin.(θs)]  # SMatrix{K,2}: locations of vertices
+end
+
+@show v_new = let K=K,r=r,θ=θ,c=c
+    ∆θ = 2π / K
+    # θs = θ .+ ∆θ .* SVector(ntuple(k->k-1, Val(K)))  # SVector{K}: angles of vertices
+    θs = (θ * ones(K)) + collect(0:(K-1))*2π/K  
+    # v = c' + (r * [cos.(θs) sin.(θs)])  # SMatrix{K,2}: locations of vertices
+    v = mapreduce(vcat,θs) do tt
+        SMatrix{1,2}(reverse(sincos(tt)))*r + c'
+    end
+end
+@show v_new2 = let K=K,r=r,θ=θ,c=c
+    ∆θ = 2π / K
+    # θs = θ .+ ∆θ .* SVector(ntuple(k->k-1, Val(K)))  # SVector{K}: angles of vertices
+    θs = (θ * ones(K)) + collect(0:(K-1))*2π/K  
+    # v = c' + (r * [cos.(θs) sin.(θs)])  # SMatrix{K,2}: locations of vertices
+    v = reduce(vcat,map(tt->SMatrix{1,2}(reverse(sincos(tt)))*r + c', θs)) 
+end
+@assert v_old ≈ v_new
+@assert v_old ≈ v_new2
+## prototype fixes to mutating `sort_v_if_needed` function in Polygon constructor that breaks Zygote AD
+K = rand(5:20)
+v_in = SMatrix{K,2}(rand(2K))
+using Statistics: mean
+using GeometryPrimitives: sort_v_if_needed, ∆ϕ, n_norm
+v = sort_v_if_needed(v_in)
+∆v = v - circshift(v,1)
+
+lines(vcat(v[:,1],v[1,1]),vcat(v[:,2],v[1,2]))
+convex_inds1 = findall(x->x>0,∆ϕ(v-circshift(SMatrix{K,2}(v),1)))
+v1 = v[convex_inds1,:]
+convex_inds2 = findall(x->x>0,∆ϕ(v1-circshift(SMatrix{49,2}(v1),1)))
+v2 = v1[convex_inds2,:]
+convex_inds3 = findall(x->x>0,∆ϕ(v2-circshift(SMatrix{K,2}(v2),1)))
+v3 = v1[convex_inds3,:]
+lines(vcat(v[convex_inds,1],v[first(convex_inds),1]),vcat(v[convex_inds,2],v[first(convex_inds),2]))
+all(∆ϕ(∆v) .> 0)
+v = copy(v_in)
+
+w1 = v .- mean(v,dims=1)
+vm = sum(v,dims=1)/K
+w2 = mapreduce(x->x'-vm,vcat,eachrow(v))
+ϕ1 = mod.(atan.(w1[:,2], w1[:,1]), 2π)
+ϕ2 = map(x->mod(atan(last(x),first(x)),2π),eachrow(w2))
+@assert w1 ≈ w2
+@assert ϕ2 ≈ ϕ1
+
+Δv = v - circshift(v,1)
+n_older = [Δv[:,2] -Δv[:,1]] ./ norm.(eachrow(Δv))
+n_old = n_norm(Δv)
+M_signs = SMatrix{2,2}(0,-1, 1,0)
+n_new = mapreduce(x->normalize(M_signs*x)',vcat,eachrow(Δv))
+@assert n_older ≈ n_old
+@assert n_older ≈ n_new
+@assert n_old ≈ n_new
+@assert v_old ≈ v_new2
+## Polygon constructor still breaking Zygote, must debug internals
+using LinearAlgebra, StaticArrays, GeometryPrimitives, Test
+using ChainRulesCore
+using ChainRules, Zygote, FiniteDifferences, ForwardDiff
+using GeometryPrimitives: polygon_vert_sortperms, l_bnds_poly, u_bnds_poly, ∆ϕ, n_norm
+using Tullio
+using CairoMakie
+function test_AD(f::Function,p;nFD=5)
+    primal  =   f(p)
+    gr_RM   =   first(Zygote.gradient(f,p))
+    gr_FM   =   ForwardDiff.gradient(f,p)
+    gr_FD   =   first(FiniteDifferences.grad(central_fdm(nFD,1),f,p))
+    return isapprox(gr_RM,gr_FD,rtol=1e-4) && isapprox(gr_RM,gr_FD,rtol=1e-4)
+end
+circpts(n) = mapreduce(x->SVector{2}(reverse(sincospi(x)))',vcat,range(0.05,1.95,length=n+1)[1:n])
+rand_verts(noise,n) = mapreduce(x->((1.0 + noise*rand())*SVector{2}(reverse(sincospi(x))))',vcat,range(0.05,1.95,length=n+1)[1:n])
+xy1,v1 = SVector{2}(rand(2)),rand_verts(0.1,5)
+p1 = vcat(vec(xy1),vec(v1))
+
+function fpgn1(xy::SVector{2,T1},v_in::SMatrix{K,2,T2}) where {K,T1<:Real,T2<:Real}
+    # v = sort_v_if_needed(v_in)
+    clockwise_sortperms = polygon_vert_sortperms(v_in)
+    if isequal(clockwise_sortperms,collect(1:K))
+        v = v_in
+    else
+        v = v_in[clockwise_sortperms,:]
+	end
+    ∆v = v - circshift(v,1)
+    @assert all(∆ϕ(∆v) .> 0) # "v = $v must represent vertices of convex polygon, but v seems non-convex"
+    n0 = ∆v * [	 0.     -1.     ;   1.     0.  ] # = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
+	@tullio nnorm[k] := ∆v[k,j]^2 |> sqrt
+	@tullio n[k,j] := n0[k,j] / nnorm[k] # normalize
+	l = l_bnds_poly(v)
+	u = u_bnds_poly(v)
+	sz = u-l
+    rbnd = max(sz.data[1],sz.data[2])*Base.rtoldefault(T2)
+    pgn = Polygon{K,2K,Float64,T2}(v,SMatrix{K,2,T2}(n),l,u,sz,rbnd,1.1) # Polygon{K,2K,D}(v,n,data)
+    return sum(sum(surfpt_nearby(xy,pgn)))
+end
+
+xy1,v1 = SVector{2}(rand(2)),rand_verts(0.1,5)
+p1 = vcat(vec(xy1),vec(v1))
+res1 = fpgn1(xy1,v1)
+gr1 = Zygote.gradient(fpgn1,xy1,v1)
+test_AD(p->fpgn1(SVector{2}(p[1:2]),SMatrix{5,2}(reshape(p[3:12],(5,2)))), p1)
+
+function fpgn2(xy::SVector{2,T1},v::SMatrix{K,2,T2}) where {K,T1<:Real,T2<:Real}
+    ∆v = v - circshift(v,1)
+    @assert all(∆ϕ(∆v) .> 0) # "v = $v must represent vertices of convex polygon, but v seems non-convex"
+    n0 = ∆v * [	 0.     -1.     ;   1.     0.  ] # = [∆v[:,2] -∆v[:,1]]  # outward normal directions to edges
+	@tullio nnorm[k] := ∆v[k,j]^2 |> sqrt
+	@tullio n[k,j] := n0[k,j] / nnorm[k] # normalize
+	l = l_bnds_poly(v)
+	u = u_bnds_poly(v)
+	sz = u-l
+    rbnd = max(sz.data[1],sz.data[2])*Base.rtoldefault(T2)
+    pgn = Polygon{K,2K,Float64,T2}(v,SMatrix{K,2,T2}(n),l,u,sz,rbnd,1.1) # Polygon{K,2K,D}(v,n,data)
+    return volfrac((xy-[1.0,1.0],xy+[1.0,1.0]),reverse(surfpt_nearby(xy,pgn))...)
+end
+res2 = fpgn2(xy1,v1)
+gr2 = Zygote.gradient(fpgn2,xy1,v1)
+test_AD(p->fpgn2(SVector{2}(p[1:2]),SMatrix{5,2}(reshape(p[3:12],(5,2)))), p1)
+
+## Polygon AD debug scratch
+v1 = rand_verts(0.3,20)
+clockwise_perm = sortperm(collect(eachrow(v1)),by=x->mod(atan(last(x),first(x)),2π))
+isequal(clockwise_perm,collect(1:size(v1,1)))
+v1sort = sort_v_if_needed(copy(v1))
+fig,ax,lv1 = lines(eachcol(v1)...)
+ax2 = fig[1,2] = Axis(fig)
+lv2 = lines!(ax2,eachcol(v1sort)...); fig
+# maybe better ways to sort vertices for clockwise order
+# sortslices(v1,dims=1,by=x->mod(atan(last(x),first(x)),2π))
+dphi1 = ∆ϕ((v1-circshift(v1,1)))
+∆ϕ((v1-circshift(v1,1))) ≈  Δϕ1
+
+w = v1 .- mean(v1, dims=1)  # v in center-of-mass coordinates
+ϕ = mod.(atan.(w[:,2], w[:,1]), 2π)  # SVector{K}: angle of vertices between 0 and 2π; `%` does not work for negative angle
+issorted(ϕ)
+v0 = circpts(10)
+w0 = v0 .- mean(v0, dims=1)  # v in center-of-mass coordinates
+ϕ0 = mod.(atan.(w0[:,2], w0[:,1]), 2π)  # SVector{K}: angle of vertices between 0 and 2π; `%` does not work for negative angle
+issorted(ϕ0)
+
+K=size(v1,1)
+Δv1 = (v1-circshift(v1,1))
+Δz = Δv1[:,1] + im * Δv1[:,2]  # SVector{K}: edge directions as complex numbers
+icurr = ntuple(identity, Val(K-1))
+inext = ntuple(x->x+1, Val(K-1))
+Δϕ1 =  angle.(Δz[SVector(inext)] ./ Δz[SVector(icurr)]) 
+Δϕ11 =  map(x->atan(last(x),first(x)), eachrow(v1) )
+Δϕ12 = circshift(Δϕ11,1) - Δϕ11
+pgn1 = Polygon(v1,rand())
+Δϕ2 = angle.(Δz)
+zip(Δz,circshift(Δz,1)) |> first |> zpair->angle(last(zpair)/first(zpair))
+Δϕ3 = map(zpair->angle(first(zpair)/last(zpair)),zip(Δz,circshift(Δz,1)))[2:end]
+Δϕ4 = map(zpair->angle(first(zpair)/last(zpair)),zip(Δz[2:20],Δz[1:19]))
+vz1 = SVector{2,ComplexF64}(1.0,1.0im)
+Δϕ5 = map(xypair->angle((first(xypair)*vz1 )/(last(xypair)*vz1)),zip(eachrow(Δv1)[2:20],eachrow(Δv1)[1:19]))
+@assert Δϕ1 ≈ Δϕ3
+@assert Δϕ1 ≈ Δϕ4
+@assert sort_v_if_needed(copy(v1)) ≈ v1
 
 ##
 
