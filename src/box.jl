@@ -32,7 +32,7 @@ function Box(c::SVector{N,T},
 		    d::SVector{N,T},
 		    axes::SMatrix{N,N,<:Real}=SMatrix{N,N,T}(I),
 		    data::D=nothing) where {N,D,T<:Real}
-	r = 0.5d
+	r = 0.5*d
 	@tullio axnorm[i] := axes[i,j]^2 |> sqrt
 	@tullio p_inv[i,j] := axes[i,j] / axnorm[j]
 	# p_inv = axes ./ sqrt.(sum(abs2,axes,dims=1))
@@ -139,7 +139,7 @@ function surfpt_nearby(x::SVector{N,T}, b::Box{N}) where {N,T<:Real}
         nout = nout0 / norm(nout0)
     end
 
-    return x+∆x, nout
+    return SVector{N}(x+∆x), SVector{N}(nout)
 end
 
 translate(b::Box{N,N²,D}, ∆::SVector{N,T}) where {N,N²,D,T<:Real} = Box{N,N²,D,T}(b.c+∆, b.r, b.p, b.data)

@@ -22,20 +22,26 @@ normal(x::AbstractVector{<:Real}, o::Shape) = surfpt_nearby(x, o)[2]  # outward 
 translate(o::Shape{N}, ∆::AbstractVector{<:Real}) where {N} = translate(o, SVector{N}(∆))
 
 function orthoaxes(n::SVector{3,<:Real})
-    u_temp = abs(n[3]) < abs(n[1]) ? SVector(0,0,1) : SVector(1,0,0)
+    u_temp = abs(n[3]) < abs(n[1]) ? SVector{3}(0,0,1) : SVector{3}(1,0,0)
     v = normalize(n × u_temp)
     u = v × n
-
     return u, v
 end
 
-function orthoaxes(n::SVector{N,<:Real}) where {N}
-    u_temp = abs(n[3]) < abs(n[1]) ? SVector(0,0,1) : SVector(1,0,0)
+function orthoaxes(n::MVector{3,<:Real})
+    u_temp = abs(n[3]) < abs(n[1]) ? SVector{3}(0,0,1) : SVector{3}(1,0,0)
     v = normalize(n × u_temp)
     u = v × n
-
     return u, v
 end
+
+# function orthoaxes(n::SVector{N,<:Real}) where {N}
+#     u_temp = abs(n[3]) < abs(n[1]) ? SVector{3}(0,0,1) : SVector{3}(1,0,0)
+#     v = normalize(n × u_temp)
+#     u = v × n
+
+#     return u, v
+# end
 
 
 SVector{2,T}(x::SVector{3,T}) where T<:Real = SVector{2,T}(x[1],x[2])

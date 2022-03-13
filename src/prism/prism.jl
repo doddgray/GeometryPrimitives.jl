@@ -41,12 +41,15 @@ mutable struct Prism{B<:Shape{2},D,T} <: Shape{3,9,D,T}
     Prism{B,D,T}(c,b,h2,p,data) where {B,D,T<:Real} = new(c,b,h2,p,data)  # suppress default outer constructor
 end
 
-Prism(c::SVector{3,T},
-      b::B,
-      h::Real=Inf,
-      axes::SMatrix{3,3,T}=SMatrix{3,3,T}(I),  # columns are axes vectors: first two columns span prism base, and last column is prism axis
-      data::D=nothing) where {B<:Shape{2},D,T<:Real} =
-    Prism{B,D,T}(c, b, 0.5h, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))), data)
+
+# `axes` columns are axes vectors: first two columns span prism base, and last column is prism axis
+# function Prism(c::SVector{3,T}, b::B, h::Real=Inf, axes::SMatrix{3,3,T}=SMatrix{3,3,T}(I), data::D=nothing) where {B<:Shape{2},D,T<:Real}
+function Prism(c::SVector{3,T}, b::B, h::Real=Inf, axes::SMatrix{3,3,T}=SMatrix{3,3,T}([ 1. 0. 0. ; 0. 1. 0. ; 0. 0. 1. ]), data::D=nothing) where {B<:Shape{2},D,T<:Real}
+    @tullio axnorm[i] := axes[i,j]^2 |> sqrt
+    @tullio p_inv[i,j] := axes[i,j] / axnorm[j]
+    # p = inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1))))
+    return Prism{B,D,T}(c, b, 0.5*h, SMatrix{3,3}(inv(p_inv)), data)
+end
 
 Prism(c::AbstractVector{T}, b::Shape{2}, h::Real=Inf, axes::AbstractMatrix{<:Real}=Matrix{T}(I,length(c),length(c)), data=nothing) where T<:Real =
     Prism(SVector{3}(c), b, h, SMatrix{3,3}(axes), data)
