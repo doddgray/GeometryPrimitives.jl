@@ -23,20 +23,40 @@ corner(vxl::NTuple{2,SVector{3,<:Number}}, sx::Integer, sy::Integer, sz::Integer
 function corner_bits(vxl::NTuple{2,SVector{3,<:Number}},  # two ends of solid diagonal of voxel
                      nout::SVector{3,<:Real}, # unit outward normal of plane
                      nr₀::Real)  # equation of plane: nout⋅(r - r₀) = 0, or nout⋅r = nr₀
-    cbits = 0x00
-    bit = 0x01
-    n_on = 0
-    # for sz = NP, sy = NP, sx = NP
-    for sz in (1,2), sy in (1,2), sx in (1,2)
-        r = corner(vxl, sx, sy, sz)
-        nr = nout⋅r
-        if nr ≤ nr₀  # corner is contained and not on boundary (nout is outward normal)
-            cbits |= bit
-            n_on += nr==nr₀  # corner is on boundary
-        end
-        bit <<= 1
-    end
+    
+    # ## ORIGINAL CODE:
+    # cbits = 0x00
+    # bit = 0x01
+    # n_on = 0
+    # # for sz = NP, sy = NP, sx = NP
+    # for sz in (1,2), sy in (1,2), sx in (1,2)
+    #     r = corner(vxl, sx, sy, sz)
+    #     nr = nout⋅r
+    #     if nr ≤ nr₀  # corner is contained and not on boundary (nout is outward normal)
+    #         cbits |= bit
+    #         n_on += nr==nr₀  # corner is on boundary
+    #     end
+    #     bit <<= 1
+    # end
 
+    ## NEW CODE (non-mutating, more AD-friendly):
+    vxl1 = first(vxl)
+    vxl2 = last(vxl)
+    nrs =  (
+        dot(nout, SVector{3}(vxl1[1], vxl1[2], vxl1[3])),
+        dot(nout, SVector{3}(vxl2[1], vxl1[2], vxl1[3])),
+        dot(nout, SVector{3}(vxl1[1], vxl2[2], vxl1[3])),
+        dot(nout, SVector{3}(vxl2[1], vxl2[2], vxl1[3])),
+        dot(nout, SVector{3}(vxl1[1], vxl1[2], vxl2[3])),
+        dot(nout, SVector{3}(vxl2[1], vxl1[2], vxl2[3])),
+        dot(nout, SVector{3}(vxl1[1], vxl2[2], vxl2[3])),
+        dot(nout, SVector{3}(vxl2[1], vxl2[2], vxl2[3])),
+    )   
+    bitvals =   (0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80)    #   (1,2,4,8,16,32,64,128)
+    cbits   =   UInt8(sum(bv_nr->(last(bv_nr)≤nr₀ ? first(bv_nr) : 0x00), zip(bitvals,nrs)))
+    # bitvals =   (1,2,4,8,16,32,64,128)
+    # cbits   =   sum(bv_nr->(last(bv_nr)≤nr₀ ? first(bv_nr) : 0), zip(bitvals,nrs))
+    n_on    =   count(nr->isequal(nr,nr₀), nrs)
     return cbits, n_on
 end
 
@@ -321,14 +341,18 @@ function volfrac(vxl::NTuple{2,SVector{2,<:Number}}, nout::SVector{2,<:Real}, r�
             SVector(r₀[1], r₀[2], 0))
 end
 
-function volfrac(vxl::NTuple{2,<:AbstractVector}, nout::AbstractVector{<:Real}, r₀::AbstractVector{<:Real}) 
-    # volfrac((SVector(vxl[N][1],vxl[N][2],0), SVector(vxl[P][1],vxl[P][2],1)),
-    #         SVector(nout[1], nout[2], 0),
-    #         SVector(r₀[1], r₀[2], 0))
-    volfrac((SVector(vxl[1][1],vxl[1][2],0), SVector(vxl[2][1],vxl[2][2],1)),
-            SVector(nout[1], nout[2], 0),
-            SVector(r₀[1], r₀[2], 0))
-end
+volfrac(vxl::NTuple{2,SVector{3,<:Number}}, nout::MVector{3,<:Real}, r₀::SVector{3,<:Real}) = volfrac(vxl,SVector{3}(nout),r₀)
+volfrac(vxl::NTuple{2,SVector{2,<:Number}}, nout::MVector{2,<:Real}, r₀::SVector{2,<:Real}) = volfrac(vxl,SVector{2}(nout),r₀)
+
+
+# function volfrac(vxl::NTuple{2,<:AbstractVector}, nout::AbstractVector{<:Real}, r₀::AbstractVector{<:Real}) 
+#     # volfrac((SVector(vxl[N][1],vxl[N][2],0), SVector(vxl[P][1],vxl[P][2],1)),
+#     #         SVector(nout[1], nout[2], 0),
+#     #         SVector(r₀[1], r₀[2], 0))
+#     volfrac((SVector(vxl[1][1],vxl[1][2],0), SVector(vxl[2][1],vxl[2][2],1)),
+#             SVector(nout[1], nout[2], 0),
+#             SVector(r₀[1], r₀[2], 0))
+# end
 
 # volfrac() for 1D voxel (= line segment).
 # - Turn the nout and r₀ into 3D vectors along the z-axis

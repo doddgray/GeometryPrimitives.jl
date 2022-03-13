@@ -58,7 +58,7 @@ Base.hash(s::Prism, h::UInt) = hash(s.c, hash(s.b, hash(s.h2, hash(s.p, hash(s.d
 function Base.in(x::SVector{3,<:Real}, s::Prism)
     y = s.p * (x - s.c)  # coordinates after projection
     ya = y[3]  # scalar: coordinate in axis dimension
-    yb = y[SVector(1,2)]  # SVector{2}: coordinate in base dimensions
+    yb = y[SVector{2}(1,2)]  # SVector{2}: coordinate in base dimensions
 
     return abs(ya) ≤ s.h2 && yb ∈ s.b
 end
@@ -68,33 +68,74 @@ function surfpt_nearby(x::SVector{3,T}, s::Prism) where {T<:Real}
 
     y = s.p * (x - s.c)  # x in prism coordinates
     ya = y[3]  # scalar: coordinate in axis dimension
-    yb = y[SVector(1,2)]  # SVector{2}: coordinates in base dimensions
+    # yb = y[SVector{2}(1,2)]  # SVector{2}: coordinates in base dimensions
+    yb = SVector{2}(y[1:2]) #SVector{2}(y[1], y[2])  # SVector{2}: coordinates in base dimensions
 
     la = abs(ya)
     abs∆a = abs(s.h2 - la)  # scalar: distance between x and base point closest to x
-    surfa = SVector(yb.data..., copysign(s.h2, ya))  # SVector{3}: coordinates of base point closest to x
-    nouta = SVector(0.0, 0.0, copysign(1.0, ya))  # SVector{3}: outward direction normal at surfa
+    # surfa = SVector{3}(yb.data..., copysign(s.h2, ya))  # SVector{3}: coordinates of base point closest to x
+    
+    # surfa = SVector{3}(yb[1], yb[2], copysign(s.h2, ya))  # SVector{3}: coordinates of base point closest to x
+    # nouta = SVector{3}(0.0, 0.0, copysign(1.0, ya))  # SVector{3}: outward direction normal at surfa
+    if ya ≥ 0.0 # Zygote works with the two lines above, but ForwardDiff chokes on copysign(s.h2,ya::Dual) 
+        surfa = SVector{3}(yb[1], yb[2], abs(s.h2))
+        nouta = SVector{3}(0.0, 0.0, 1.0)
+    else
+        surfa = SVector{3}(yb[1], yb[2],-abs(s.h2))
+        nouta = SVector{3}(0.0, 0.0, -1.0)
+    end
+    
     onbnda = abs∆a ≤ Base.rtoldefault(T) * s.h2
     isouta = s.h2<la || onbnda
 
-    surfb2, noutb2 = surfpt_nearby(yb, s.b)  # (SVector{2}, SVector{2}): side point closest to x and outward direction normal to side there
+    # surfb2, noutb2 = surfpt_nearby(yb, s.b)  # (SVector{2}, SVector{2}): side point closest to x and outward direction normal to side there
+    surfb2_noutb2 = surfpt_nearby(yb, s.b)  # (SVector{2}, SVector{2}): side point closest to x and outward direction normal to side there
+    surfb2 = first(surfb2_noutb2)
+    noutb2 = last(surfb2_noutb2)
     abs∆b = norm(surfb2 - yb)  # scalar: distance between x and side point closest to x
-    surfb = SVector(surfb2.data..., ya)  # SVector{3}: coordinates of side point closest to x
-    noutb = SVector(noutb2.data..., 0.0)  # SVector{3}: outward direction normal to side surface at surfb
+    # surfb = SVector{3}(surfb2.data..., ya)  # SVector{3}: coordinates of side point closest to x
+    # noutb = SVector{3}(noutb2.data..., 0.0)  # SVector{3}: outward direction normal to side surface at surfb
+    surfb = SVector{3}(surfb2[1],surfb2[2], ya)  # SVector{3}: coordinates of side point closest to x
+    noutb = SVector{3}(noutb2[1],noutb2[2], 0.0)  # SVector{3}: outward direction normal to side surface at surfb
     basesize = abs.((-)(bounds(s.b)...))  # SVector{2}: size of bounding rectancle of base
     onbndb = abs∆b ≤ Base.rtoldefault(T) * max(basesize.data...)
-    isoutb = yb∉s.b || onbndb
+    
+    # isoutb = yb∉s.b || onbndb
+    if !in(yb,s.b) || onbndb
+        isoutb = true
+    else
+        isoutb = false
+    end
 
     if isouta && isoutb  # x outside in both axis and base dimensions
-        surf = SVector(surfb[1], surfb[2], surfa[3])
-        nout = (onbnda && onbndb) ? (noutb + nouta) : (y - surf)
-        nout = norm(nout)==Inf ? isinf.(nout) .* sign.(nout) : normalize(nout)  # e.g., return [0,0,-1] for nout = [1,-2,-Inf]
+        surf = SVector{3}(surfb[1], surfb[2], surfa[3])
+        # nout = (onbnda && onbndb) ? (noutb + nouta) : (y - surf)
+        # nout = norm(nout)==Inf ? isinf.(nout) .* sign.(nout) : normalize(nout)  # e.g., return [0,0,-1] for nout = [1,-2,-Inf]
+        if onbnda && onbndb
+            nout0 = noutb + nouta
+        else
+            nout0 = y - surf
+        end
+        if isinf(norm(nout0))
+            nout = map(ni->sign(ni)*isinf(ni),nout0) #isinf.(nout0) .* sign.(nout0)
+        else
+            nout = normalize(nout0)  # e.g., return [0,0,-1] for nout = [1,-2,-Inf]
+        end
     elseif !isouta && isoutb  # x outside in base dimensions, but inside prism in axis dimension
-        (surf, nout) = (surfb, noutb)
+        surf = surfb
+        nout = noutb
     elseif isouta && !isoutb # x outside in axis dimension, but inside prism in base dimensions
-        (surf, nout) = (surfa, nouta)
+        surf = surfa
+        nout = nouta
     else  # !isouta && !isoutb: x strictly inside prism
-        (surf, nout) = (abs∆a ≤ abs∆b) ? (surfa, nouta) : (surfb, noutb)
+        # (surf, nout) = (abs∆a ≤ abs∆b) ? (surfa, nouta) : (surfb, noutb)
+        if abs∆a ≤ abs∆b
+            surf = surfa
+            nout = nouta
+        else
+            surf = surfb
+            nout = noutb
+        end
     end
 
     return ax*(surf+s.c), ax*nout

@@ -16,9 +16,36 @@ Base.hash(s::Sphere, h::UInt) = hash(s.c, hash(s.r, hash(s.data, hash(:Sphere, h
 
 Base.in(x::SVector{N,<:Real}, s::Sphere{N}) where {N} = sum(abs2, x - s.c) ≤ s.r^2
 
-function surfpt_nearby(x::SVector{N,<:Real}, s::Sphere{N}) where {N}
-    nout = x==s.c ? SVector(ntuple(k -> k==1 ? 1.0 : 0.0, Val(N))) :  # nout = e₁ for x == s.c
-                    normalize(x-s.c)
+# function surfpt_nearby(x::SVector{N,<:Real}, s::Sphere{N}) where {N}
+#     nout = x==s.c ? SVector(ntuple(k -> k==1 ? 1.0 : 0.0, Val(N))) :  # nout = e₁ for x == s.c
+#                     normalize(x-s.c)
+#     return s.c+s.r*nout, nout
+# end
+
+function surfpt_nearby(x::SVector{3,<:Real}, s::Sphere{3})
+    if !isequal(x,s.c)
+        nout = normalize(x-s.c)
+    else
+        nout = SVector{3}(one(eltype(x))*one(eltype(s.c)),0.0,0.0)
+    end
+    return s.c+s.r*nout, nout
+end
+
+function surfpt_nearby(x::SVector{2,<:Real}, s::Sphere{2})
+    if !isequal(x,s.c)
+        nout = normalize(x-s.c)
+    else
+        nout = SVector{2}(one(eltype(x))*one(eltype(s.c)),0.0)
+    end
+    return s.c+s.r*nout, nout
+end
+
+function surfpt_nearby(x::SVector{1,<:Real}, s::Sphere{1})
+    if !isequal(x,s.c)
+        nout = normalize(x-s.c)
+    else
+        nout = SVector{1}(one(eltype(x))*one(eltype(s.c)),)
+    end
     return s.c+s.r*nout, nout
 end
 

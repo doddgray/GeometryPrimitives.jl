@@ -75,7 +75,8 @@ make_regpoly(n,p) = regpoly(n,first(p),p[2],SVector{2}(p[3:4]),p[5])
 fsh2D = ( make_sphere2, make_box2, make_5gon, make_10gon, make_100gon, make_8regpoly)
 np_fsh2D = ( 4, 9, 11, 21, 201, 5 )
 # 3D Sphere and Box functions
-make_sphere3(p) = Sphere(SVector{3}(p[1:3]),p[4],p[5])
+# make_sphere3(p) = Sphere(SVector{3}(p[1:3]),p[4],p[5])
+make_sphere3(p) = Sphere(SVector{3}(p[1],p[2],p[3]),p[4],p[5])
 function make_box3(p)   # length(p) should be 9 
     return Box(					# Instantiate N-D box, here N=2 (rectangle)
         SVector{3}(p[1:3]),					# c: center
@@ -89,38 +90,38 @@ function make_box3(p)   # length(p) should be 9
     )
 end
 # 3D prism-related shape functions
-make_6polyprism(p) = PolygonalPrism(SVector{3}(p[1:3]),SMatrix{6,2}(p[4:15]),p[16])
+make_6polyprism(p) = Prism(SVector{3}(p[14:16]),Polygon(SMatrix{5,2}(reshape(p[1:12],(6,2)))*0.3+circpts(6),p[13]),p[13]) # PolygonalPrism(SVector{3}(p[1:3]),SMatrix{6,2}(p[4:15]),p[16])
 make_cyl(p) = Cylinder(SVector{3}(p[1:3]),p[4],p[5],SVector{3}(p[6:8]),p[9])
 fsh3D = ( make_sphere3, make_box3, make_6polyprism, make_cyl )
 np_fsh3D = ( 5, 16, 16, 9 )
 # make shapes with random parameters
-shapes2D = map((f,np)->f(rand(np)),zip(fsh2D,np_fsh2D))
-shapes3D = map((f,np)->f(rand(np)),zip(fsh3D,np_fsh3D))
-(sph2, bx2, pgn5, pgn10, pgn100, rp8) = shapes2D
-(sph3, bx3, ppr6, cylpr) = shapes3D
+# shapes2D = map((f,np)->f(rand(np)),zip(fsh2D,np_fsh2D))
+# shapes3D = map((f,np)->f(rand(np)),zip(fsh3D,np_fsh3D))
+# (sph2, bx2, pgn5, pgn10, pgn100, rp8) = shapes2D
+# (sph3, bx3, ppr6, cylpr) = shapes3D
 
 # # make 2D shapes
-# sph2 = make_sphere2(rand(4))
-# bx2 = make_box2(rand(9))
-# pgn5 = make_5gon(rand(11))
-# pgn10 = make_10gon(rand(21))
-# pgn100 = make_100gon(rand(201))
-# rp8 = make_8regpoly(rand(5))
-# rp60 = make_regpoly(60,rand(5))
-# shapes2D = ( sph2, bx2, pgn5, pgn10, pgn100, rp8, rp60, )
+sph2 = make_sphere2(rand(4))
+bx2 = make_box2(rand(9))
+pgn5 = make_5gon(rand(11))
+pgn10 = make_10gon(rand(21))
+pgn100 = make_100gon(rand(201))
+rp8 = make_8regpoly(rand(5))
+rp60 = make_regpoly(60,rand(5))
+shapes2D = ( sph2, bx2, pgn5, pgn10, pgn100, rp8, rp60, )
 
-# # make 3D shapes
-# sph3 = make_sphere3(rand(5))
-# bx3 = make_box3(rand(16))
-# ppr6 = make_6polyprism(rand(16))
-# cylpr = make_cyl(rand(9))
-# shapes3D = ( sph3, bx3, ppr6, cylpr )
+# make 3D shapes
+sph3 = make_sphere3(rand(5))
+bx3 = make_box3(rand(16))
+ppr6 = make_6polyprism(rand(16))
+cylpr = make_cyl(rand(9))
+shapes3D = ( sph3, bx3, ppr6, cylpr )
 # shapes3D = map((f,np)->f(rand(np)),zip(fsh3D,np_fsh3D))
 # (sph2, bx2, pgn5, pgn10, pgn100, rp8, rp60, sph3, bx3, ppr6, cylpr)map((f,np)->f(rand(np)),zip(vcat(fsh2D,fsh3D),vcat(np_fsh2D,np_fsh3D)))
 
-Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{2}(p[12:13]),make_5gon(p[1:11])))),rand(13))
-Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{3}(p[12:13]...,0.0)[1:2],make_5gon(p[1:11])))),rand(13))
-test_AD(p->sum(sum(surfpt_nearby(SVector{2}(p[12:13]),make_5gon(p[1:11])))),rand(13))
+# Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{2}(p[12:13]),make_5gon(p[1:11])))),rand(13))
+# Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{3}(p[12:13]...,0.0)[1:2],make_5gon(p[1:11])))),rand(13))
+# test_AD(p->sum(sum(surfpt_nearby(SVector{2}(p[12:13]),make_5gon(p[1:11])))),rand(13))
 
 @testset verbose = true "GeometryPrimitives AD Testing" begin
     @testset verbose = true "surfpt_nearby AD Gradients" begin
@@ -184,22 +185,160 @@ test_AD(p->sum(sum(surfpt_nearby(SVector{2}(p[12:13]),make_5gon(p[1:11])))),rand
 end
 
 ##
+# Test Summary:                                                                                                                                                  | Pass  Fail  Error  Total
+# GeometryPrimitives AD Testing                                                                                                                                  |   32     2      8     42
+#   surfpt_nearby AD Gradients                                                                                                                                   |   17            4     21
+#     2D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type Sphere{2, 4, Float64, Float64}                                                           |    1                   1
+#     2D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type Box{2, 4, Float64, Float64}                                                              |    1                   1
+#     2D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type Polygon{5, 10, Float64, Float64}                                                         |    1                   1
+#     2D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type Polygon{10, 20, Float64, Float64}                                                        |    1                   1
+#     2D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type Polygon{100, 200, Float64, Float64}                                                      |    1                   1
+#     2D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type Polygon{8, 16, Float64, Float64}                                                         |    1                   1
+#     2D x-vector gradients of surfpt_nearby(x,shape) for 2D shape type Polygon{60, 120, Float64, Float64}                                                       |    1                   1
+#     3D x-vector gradients of surfpt_nearby(x,shape) for 3D shape type Sphere{3, 9, Float64, Float64}                                                           |    1                   1
+#     3D x-vector gradients of surfpt_nearby(x,shape) for 3D shape type Box{3, 9, Float64, Float64}                                                              |    1                   1
+#     3D x-vector gradients of surfpt_nearby(x,shape) for 3D shape type PolygonalPrism{6, 12, Float64, Nothing, Float64}                                         |                 1      1
+#     3D x-vector gradients of surfpt_nearby(x,shape) for 3D shape type Prism{Sphere{2, 4, Nothing, Float64}, Float64, Float64}                                  |                 1      1
+#     2D shape parameter gradients of surfpt_nearby(x::SVector{2},shape) for shape fn make_sphere2 with 4 params                                                 |    1                   1
+#     2D shape parameter gradients of surfpt_nearby(x::SVector{2},shape) for shape fn make_box2 with 9 params                                                    |    1                   1
+#     2D shape parameter gradients of surfpt_nearby(x::SVector{2},shape) for shape fn make_5gon with 11 params                                                   |    1                   1
+#     2D shape parameter gradients of surfpt_nearby(x::SVector{2},shape) for shape fn make_10gon with 21 params                                                  |    1                   1
+#     2D shape parameter gradients of surfpt_nearby(x::SVector{2},shape) for shape fn make_100gon with 201 params                                                |    1                   1
+#     2D shape parameter gradients of surfpt_nearby(x::SVector{2},shape) for shape fn make_8regpoly with 5 params                                                |    1                   1
+#     3D shape parameter gradients of surfpt_nearby(x::SVector{3},shape) for shape fn make_sphere3 with 5 params                                                 |    1                   1
+#     3D shape parameter gradients of surfpt_nearby(x::SVector{3},shape) for shape fn make_box3 with 16 params                                                   |    1                   1
+#     3D shape parameter gradients of surfpt_nearby(x::SVector{3},shape) for shape fn make_6polyprism with 16 params                                             |                 1      1
+#     3D shape parameter gradients of surfpt_nearby(x::SVector{3},shape) for shape fn make_cyl with 9 params                                                     |                 1      1
+#   volfrac AD Gradients                                                                                                                                         |   15     2      4     21
+#     2D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 2D shape type Sphere{2, 4, Float64, Float64}                          |    1                   1
+#     2D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 2D shape type Box{2, 4, Float64, Float64}                             |    1                   1
+#     2D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 2D shape type Polygon{5, 10, Float64, Float64}                        |    1                   1
+#     2D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 2D shape type Polygon{10, 20, Float64, Float64}                       |    1                   1
+#     2D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 2D shape type Polygon{100, 200, Float64, Float64}                     |    1                   1
+#     2D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 2D shape type Polygon{8, 16, Float64, Float64}                        |    1                   1
+#     2D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 2D shape type Polygon{60, 120, Float64, Float64}                      |    1                   1
+#     3D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 3D shape type Sphere{3, 9, Float64, Float64}                          |          1             1
+#     3D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 3D shape type Box{3, 9, Float64, Float64}                             |    1                   1
+#     3D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 3D shape type PolygonalPrism{6, 12, Float64, Nothing, Float64}        |                 1      1
+#     3D x-vector gradients of volfrac((x-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for 3D shape type Prism{Sphere{2, 4, Nothing, Float64}, Float64, Float64} |                 1      1
+#     2D shape parameter gradients of volfrac((x::SVector{2}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn make_sphere2 with 4 params                |    1                   1
+#     2D shape parameter gradients of volfrac((x::SVector{2}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn make_box2 with 9 params                   |    1                   1
+#     2D shape parameter gradients of volfrac((x::SVector{2}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn make_5gon with 11 params                  |    1                   1
+#     2D shape parameter gradients of volfrac((x::SVector{2}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn make_10gon with 21 params                 |    1                   1
+#     2D shape parameter gradients of volfrac((x::SVector{2}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn make_100gon with 201 params               |    1                   1
+#     2D shape parameter gradients of volfrac((x::SVector{2}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn make_8regpoly with 5 params               |    1                   1
+#     3D shape parameter gradients of volfrac((x::SVector{3}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn make_sphere3 with 5 params                |          1             1
+#     3D shape parameter gradients of volfrac((x::SVector{3}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn make_box3 with 16 params                  |    1                   1
+#     3D shape parameter gradients of volfrac((x::SVector{3}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn make_6polyprism with 16 params            |                 1      1
+#     3D shape parameter gradients of volfrac((x::SVector{3}-δx,x+δx),reverse(surfpt_nearby(x,shape))...) for shape fn make_cyl with 9 params                    |                 1      1
+# ERROR: LoadError: Some tests did not pass: 32 passed, 2 failed, 8 errored, 0 broken.
+# in expression starting at /home/dodd/github/GeometryPrimitives.jl/test/grads.jl:125
+
+##
+make_6polyprism3(p) = Prism(SVector{3}(p[14:16]),Polygon(SMatrix{6,2}(reshape(p[1:12],(6,2)))*0.3+circpts(6),p[13]),p[13])
+ppr63 = make_6polyprism3(rand(16))
+fspn_ppr6(p) = sum(sum(surfpt_nearby(SVector{3}(p),ppr63)))
+p = rand(3)
+xyz = SVector{3}(rand(3))
+surfpt_nearby(xyz,ppr63)
+primal = fspn_ppr6(p)
+grRM = Zygote.gradient(fspn_ppr6,p)
+##
+# f = fspn_ppr6
+p = rand(3)
+nFD = 5
+@show primal  =   f(p)
+@show gr_RM   =   first(Zygote.gradient(f,p))
+@show gr_FM   =   ForwardDiff.gradient(f,p)
+@show gr_FD   =   first(FiniteDifferences.grad(central_fdm(nFD,1),f,p))
+@show AD_test_ret = isapprox(gr_RM,gr_FD,rtol=1e-4) && isapprox(gr_RM,gr_FD,rtol=1e-4)
+
+##
+
+
+
+
+
+
+
+
+
+##
+using GeometryPrimitives: corner_bits
+
+function corner_bits2(  vxl::NTuple{2,SVector{3,<:Number}},  # two ends of solid diagonal of voxel
+                        nout::SVector{3,<:Real}, # unit outward normal of plane
+                        nr₀::Real)  # equation of plane: nout⋅(r - r₀) = 0, or nout⋅r = nr₀)
+    vxl1 = first(vxl)
+    vxl2 = last(vxl)
+    nrs =  (
+        dot(nout, SVector{3}(vxl1[1], vxl1[2], vxl1[3])),
+        dot(nout, SVector{3}(vxl2[1], vxl1[2], vxl1[3])),
+        dot(nout, SVector{3}(vxl1[1], vxl2[2], vxl1[3])),
+        dot(nout, SVector{3}(vxl2[1], vxl2[2], vxl1[3])),
+        dot(nout, SVector{3}(vxl1[1], vxl1[2], vxl2[3])),
+        dot(nout, SVector{3}(vxl2[1], vxl1[2], vxl2[3])),
+        dot(nout, SVector{3}(vxl1[1], vxl2[2], vxl2[3])),
+        dot(nout, SVector{3}(vxl2[1], vxl2[2], vxl2[3])),
+    )   
+    bitvals =   (0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80)    #   (1,2,4,8,16,32,64,128)
+    cbits   =   UInt8(sum(bv_nr->(last(bv_nr)≤nr₀ ? first(bv_nr) : 0x00), zip(bitvals,nrs)))
+    # bitvals =   (1,2,4,8,16,32,64,128)
+    # cbits   =   sum(bv_nr->(last(bv_nr)≤nr₀ ? first(bv_nr) : 0), zip(bitvals,nrs))
+    n_on    =   count(nr->isequal(nr,nr₀), nrs)
+    # nrs =  (
+    #     dot(nout, corner(vxl, 1, 1, 1)),
+    #     dot(nout, corner(vxl, 2, 1, 1)),
+    #     dot(nout, corner(vxl, 1, 2, 1)),
+    #     dot(nout, corner(vxl, 2, 2, 1)),
+    #     dot(nout, corner(vxl, 1, 1, 2)),
+    #     dot(nout, corner(vxl, 2, 1, 2)),
+    #     dot(nout, corner(vxl, 1, 2, 2)),
+    #     dot(nout, corner(vxl, 2, 2, 2)),
+    # )
+    return cbits, n_on
+end
+
+##
+vxl = (-SVector{3}(1.0,1.0,1.0), SVector{3}(1.0,1.0,1.0))
+@show nout = SVector{3}(normalize(2*rand(3) .- 1.0))
+@show r0 = SVector{3}((2*rand(3) .- 1.0))
+@show nr0 = nout ⋅ r0
+@show cbits1,n_on1 = corner_bits(vxl,nout,nr0)
+@show cbits2,n_on2 = corner_bits2(vxl,nout,nr0)
+@assert isequal(cbits1,cbits2)
+@assert isequal(n_on1,n_on2)
+##
+
+
+
 
 
 ##
 Zygote.gradient(p->sum(sum(surfpt_nearby(SVector{3}(p[6:8]),make_sphere3(p[1:5])))),rand(8))
 test_AD(p->sum(sum(surfpt_nearby(SVector{3}(p[6:8]),make_sphere3(p[1:5])))),rand(8))
-vf_sphere3(p) = volfrac((SVector{3}(p[6:8])-SVector{3}(0.1,0.1,0.1),SVector{3}(p[6:8])+SVector{3}(0.1,0.1,0.1)),reverse(surfpt_nearby(SVector{3}(p[6:8]),make_sphere3(p[1:5])))...)
+# vf_sphere3(p) = volfrac((SVector{3}(p[6:8])-SVector{3}(0.1,0.1,0.1),SVector{3}(p[6:8])+SVector{3}(0.1,0.1,0.1)),reverse(surfpt_nearby(SVector{3}(p[6:8]),make_sphere3(p[1:5])))...)
+function vf_sphere3(p)
+    xyz = SVector{3}(p[6:8])
+    vxl = (xyz-SVector{3}(0.1,0.1,0.1),xyz+SVector{3}(0.1,0.1,0.1))
+    s = make_sphere3(p[1:5])
+    r0, n = surfpt_nearby(xyz,s)
+    # n = normalize(xyz-s.c)
+    # r0 = s.c + (s.r*n)
+    # nr = dot(n,r0)
+    # return sum(nr)
+    return volfrac(vxl,n,r0)
+end
 Zygote.gradient(vf_sphere3,rand(8))
-##
 f = vf_sphere3
+##
 # p = [0., 0., 0., 1.0, 2.2,  0.99, 0.0, 0.0] + 0.01*rand(8)
 # p = [0., 0., 0., 1.0, 2.2,  1.01, 0.0, 0.0] + 0.01*rand(8)
 # p = [0., 0., 0., 1.0, 2.2,  0.0, 0.99, 0.0] + 0.01*rand(8)
 # p = [0., 0., 0., 1.0, 2.2,  0.0, 1.01, 0.0] + 0.01*rand(8)
 # p = [0., 0., 0., 1.0, 2.2,  0.0, 0.0, 0.92] + 0.01*rand(8)
-# p = [0., 0., 0., 1.0, 2.2,  0.0, 0.0, 1.01] + 0.01*rand(8)
-p = [0., 0., 0., 1.0, 2.2,  0.0, 0.99/sqrt(2), 0.99/sqrt(2)] + 0.01*rand(8)
+p = [0., 0., 0., 1.0, 2.2,  0.0, 0.0, 1.01] + 0.01*rand(8)
+# p = [0., 0., 0., 1.0, 2.2,  0.0, 0.99/sqrt(2), 0.99/sqrt(2)] + 0.01*rand(8)
 # p = [0., 0., 0., 1.0, 2.2,  0.0, 0.99/sqrt(2), 0.99/sqrt(2)] + 0.01*rand(8)
 # p = [0., 0., 0., 1.0, 2.2,  0.99/sqrt(2), 0.99/sqrt(2), 0.0 ] + 0.01*rand(8)
 # p = [0., 0., 0., 1.0, 2.2,  0.0, 0.99/sqrt(2), 0.99/sqrt(2)] + 0.01*rand(8)
