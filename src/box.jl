@@ -55,11 +55,11 @@ end
 
 
 
-Box(c::AbstractVector{T},  # center of box
-    d::AbstractVector{T},  # size of box in axis directions
-    axes::AbstractMatrix{<:Real}=Matrix{T}(I,length(c),length(c)),  # columns are axes vectors (each being parallel to two sets of faces in 3D)
-    data=nothing) where T<:Real =
-    (N = length(c); Box(SVector{N}(c), SVector{N}(d), SMatrix{N,N}(axes), data))
+Box(c::AbstractVector{T1},  # center of box
+    d::AbstractVector{T2},  # size of box in axis directions
+    axes::AbstractMatrix{T3}=Matrix{promote_type(T1,T2)}(I,length(c),length(c)),  # columns are axes vectors (each being parallel to two sets of faces in 3D)
+    data=nothing) where {T1<:Real,T2<:Real,T3<:Real} =
+    (N = length(c); T=promote_type(T1,T2,T3); Box(SVector{N,T}(c), SVector{N,T}(d), SMatrix{N,N,T}(axes), data))
 
 Base.:(==)(b1::Box, b2::Box) = b1.c==b2.c && b1.r==b2.r && b1.p==b2.p && b1.data==b2.data
 Base.isapprox(b1::Box, b2::Box) = b1.c≈b2.c && b1.r≈b2.r && b1.p≈b2.p && b1.data==b2.data
@@ -94,23 +94,26 @@ end
 # f_isout(b,absd) =  (isout = Zygote.@ignore ((b.r.<absd) .| f_onbnd(b,absd) ); isout)
 # f_signs(d) =  (signs = Zygote.@ignore(sign.(d)'); signs) #(copysign.(1.0,d)'); signs)
 f_isout(b,absd) =  ( b.r.< absd ) .| f_onbnd(b,absd) 
-f_signs(d) =  sign.(d)'
+f_signs(d) = copysign.(one(eltype(d)),d)' #sign.(d)'
 
-@non_differentiable f_onbnd(::Any)
-@non_differentiable f_isout(::Any)
+@non_differentiable f_onbnd(::Any,::Any)
+@non_differentiable f_isout(::Any,::Any)
 @non_differentiable f_signs(::Any)
 
-function surfpt_nearby(x::SVector{N,T}, b::Box{N}) where {N,T<:Real}
+function surfpt_nearby(x::SVector{N,T1}, b::Box{N,N²,D,T2}) where {N,N²,D,T1<:Real,T2<:Real}
+    T = promote_type(T1,T2)
     ax = inv(b.p)  # axes: columns are unit vectors
     # p_rownorm = map(norm,eachrow(bx.p))
     @tullio p_rownorm[i] := b.p[i,j]^2 |> sqrt
     @tullio n0[i,j] := b.p[i,j] / p_rownorm[i] # normalize
     d= Array(b.p * (x - b.c))
     cosθ = diag(n0*ax)
-    n = n0 .* f_signs(d)
-	# n = n0 .* copysign.(1.0,d) 
-    absd = abs.(d)
-    ∆ = (b.r .- absd) .* cosθ
+	n = n0 .* copysign.(one(eltype(d)),d) 
+    # n = n0 .* f_signs(d)
+    # d_signs = f_signs(d)
+    # @tullio n[i,j] := d_signs[j] * n0[i,j] nograd=d_signs
+    absd = map(abs,d) #abs.(d)
+    ∆ = SVector{N,T}(diag((b.r-absd) * cosθ')) # (b.r .- absd) .* cosθ
     onbnd = f_onbnd(b,absd)
     isout = f_isout(b,absd)
     # projbnd =  all(.!isout .| onbnd)
@@ -142,7 +145,7 @@ function surfpt_nearby(x::SVector{N,T}, b::Box{N}) where {N,T<:Real}
     return SVector{N}(x+∆x), SVector{N}(nout)
 end
 
-translate(b::Box{N,N²,D}, ∆::SVector{N,T}) where {N,N²,D,T<:Real} = Box{N,N²,D,T}(b.c+∆, b.r, b.p, b.data)
+translate(b::Box{N,N²,D,T1}, ∆::SVector{N,T2}) where {N,N²,D,T1<:Real,T2<:Real} = Box(b.c+∆, 2*b.r, inv(b.p), b.data) #Box{N,N²,D,promote_type(T1,T2)}(b.c+∆, b.r, b.p, b.data)
 
 """
 ChainRulesCore differentiation rules for Box

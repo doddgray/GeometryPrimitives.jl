@@ -15,21 +15,25 @@
     @test normal([-1.1,0],b) == [-1,0]
     @test normal([1.1,2.1],b) == [1,1]/√2
     @test bounds(b) == ([-1,-2],[1,2])
-    @test bounds(Box([0,0], [2,4], [1 1; 1 -1])) ≈ ([-3*√0.5,-3*√0.5], [3*√0.5,3*√0.5])
+    # @test bounds(Box([0,0], [2,4], [1 1; 1 -1])) ≈ ([-3*√0.5,-3*√0.5], [3*√0.5,3*√0.5])
+    @test bounds(Box(SVector{2,Float64}([0,0]), SVector{2,Float64}([2,4]), SMatrix{2,2,Float64}([1 1; 1 -1]))) ≈ ([-3*√0.5,-3*√0.5], [3*√0.5,3*√0.5])
     @test checkbounds(b)
-    @test checkbounds(Box([0,0], [2,4], [1 1; 1 -1]))
-
-    @test (∆ = rand(2); translate(b,∆) ≈ Box([0,0]+∆, [2,4]))
+    # @test checkbounds(Box([0,0], [2,4], [1 1; 1 -1]))
+    @test checkbounds(Box(SVector{2,Float64}([0,0]), SVector{2,Float64}([2,4]), SMatrix{2,2,Float64}([1 1; 1 -1])))
+    # @test (∆ = rand(2); translate(b,∆) ≈ Box([0,0]+∆, [2,4]))
+    @test (∆ = rand(2); translate(b,∆) ≈ Box(SVector{2,Float64}([0,0]+∆), SVector{2,Float64}([2,4])) )
 end  # @testset "Box"
 
 
 @testset "Box, rotated" begin
-    ax1, ax2 = normalize.(([1,-1], [1,1]))
-    r1, r2 = 1, 2  # "radii"
-    br = Box([0,0], [2r1, 2r2], [ax1 ax2])
-
-    R = [ax1 ax2]  # rotation matrix
-
+    # ax1, ax2 = normalize.(([1,-1], [1,1]))
+    # r1, r2 = 1, 2  # "radii"
+    # br = Box([0,0], [2r1, 2r2], [ax1 ax2])
+    # R = [ax1 ax2]  # rotation matrix
+    ax1, ax2 = normalize.((SVector{2,Float64}([1,-1]), SVector{2,Float64}([1,1])))
+    r1, r2 = 1.0, 2.0  # "radii"
+    br = Box(SVector{2,Float64}([0,0]), SVector{2,Float64}([2r1, 2r2]), SMatrix{2,2,Float64}([ax1 ax2]))
+    R = SMatrix{2,2,Float64}([ax1 ax2])
     Cin = R * (GeometryPrimitives.signmatrix(br) .* (one⁻ .* [r1,r2]))  # around corners, inside
     Cout = R * (GeometryPrimitives.signmatrix(br) .* (one⁺ .* [r1,r2]))  # around corners, outside
     for j = 1:2; @test Cin[:,j] ∈ br; end
