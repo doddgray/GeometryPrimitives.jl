@@ -94,7 +94,11 @@ end
 # f_isout(b,absd) =  (isout = Zygote.@ignore ((b.r.<absd) .| f_onbnd(b,absd) ); isout)
 # f_signs(d) =  (signs = Zygote.@ignore(sign.(d)'); signs) #(copysign.(1.0,d)'); signs)
 f_isout(b,absd) =  ( b.r.< absd ) .| f_onbnd(b,absd) 
-f_signs(d) = copysign.(one(eltype(d)),d)' #sign.(d)'
+# f_signs(d) = copysign.(one(eltype(d)),d) #sign.(d)'
+function f_signs(d::TV)::TV where {TV<:AbstractVector{T} where T<:Real}
+    one_d = one(eltype(d))
+    return map(dd->copysign(one_d,dd),d)
+end
 
 @non_differentiable f_onbnd(::Any,::Any)
 @non_differentiable f_isout(::Any,::Any)
@@ -106,12 +110,12 @@ function surfpt_nearby(x::SVector{N,T1}, b::Box{N,N²,D,T2}) where {N,N²,D,T1<:
     # p_rownorm = map(norm,eachrow(bx.p))
     @tullio p_rownorm[i] := b.p[i,j]^2 |> sqrt
     @tullio n0[i,j] := b.p[i,j] / p_rownorm[i] # normalize
-    d= Array(b.p * (x - b.c))
+    d = b.p * (x - b.c) # Array(b.p * (x - b.c))
     cosθ = diag(n0*ax)
-	n = n0 .* copysign.(one(eltype(d)),d) 
+	# n = n0 .* copysign.(one(eltype(d)),d) 
     # n = n0 .* f_signs(d)
-    # d_signs = f_signs(d)
-    # @tullio n[i,j] := d_signs[j] * n0[i,j] nograd=d_signs
+    d_signs = f_signs(d)
+    @tullio n[i,j] := n0[i,j] * d_signs[i] nograd=d_signs
     absd = map(abs,d) #abs.(d)
     ∆ = SVector{N,T}(diag((b.r-absd) * cosθ')) # (b.r .- absd) .* cosθ
     onbnd = f_onbnd(b,absd)
