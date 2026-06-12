@@ -22,27 +22,29 @@ function drawshape! end
 
 # relative tolerance * x (assumed ≥ 0) for approximate comparisons,
 # defined to square root of machine precision like Base.rtoldefault
-rtol(x::Real) = (y = float(x); sqrt(eps(typeof(y))) * y)
+rtol(x::Number) = (y = float(x); sqrt(eps(typeof(y))) * y)
 
 # Floating-point element type used to store the parameters of a shape constructed from
 # arguments with the given element types.  Keeping this generic (instead of forcing
-# Float64) lets shapes carry dual/tracked number types used by automatic differentiation.
-promote_eltype(Ts::Type...) = promote_type(map(float, Ts)...)
+# Float64) lets shapes carry dual/traced number types used by automatic differentiation.
+floattype(::Type{T}) where {T<:Real} = float(T)
+floattype(::Type{T}) where {T<:Number} = T  # e.g. traced number types that do not define float(::Type)
+promote_eltype(Ts::Type...) = promote_type(map(floattype, Ts)...)
 
 # The following functions return Any due to the limitations of Julia's dispatch system.
 # Therefore, always call them with return type assertions.  See
 # https://discourse.julialang.org/t/extending-base-in-type-stably/5341/12
 # https://github.com/JuliaLang/julia/issues/23210
-level(x::AbstractVector{<:Real}, s::Shape{N}) where {N} = level(SVector{N}(x), s)
-Base.in(x::AbstractVector{<:Real}, s::Shape{N}) where {N} = level(x,s) ≥ 0
-surfpt_nearby(x::AbstractVector{<:Real}, s::Shape{N}) where {N} = surfpt_nearby(SVector{N}(x), s)
-normal(x::AbstractVector{<:Real}, s::Shape) = surfpt_nearby(x, s)[2]  # outward direction even for x inside s
-translate(s::Shape{N}, ∆::AbstractVector{<:Real}) where {N} = translate(s, SVector{N}(∆))
+level(x::AbstractVector{<:Number}, s::Shape{N}) where {N} = level(SVector{N}(x), s)
+Base.in(x::AbstractVector{<:Number}, s::Shape{N}) where {N} = level(x,s) ≥ 0
+surfpt_nearby(x::AbstractVector{<:Number}, s::Shape{N}) where {N} = surfpt_nearby(SVector{N}(x), s)
+normal(x::AbstractVector{<:Number}, s::Shape) = surfpt_nearby(x, s)[2]  # outward direction even for x inside s
+translate(s::Shape{N}, ∆::AbstractVector{<:Number}) where {N} = translate(s, SVector{N}(∆))
 # Shapes are immutable (for the sake of automatic differentiation), so there is no generic
 # mutating implementation of translate(s, ∆::SVector); each shape type defines its own
 # method that constructs a translated copy.
 
-function orthoaxes(n::SVector{3,<:Real})
+function orthoaxes(n::SVector{3,<:Number})
     u_temp = abs(n[3]) < abs(n[1]) ? SVector(0,0,1) : SVector(1,0,0)
     v = normalize(n × u_temp)
     u = v × n

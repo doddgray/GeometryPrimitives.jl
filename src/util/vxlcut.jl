@@ -21,8 +21,8 @@ corner(vxl::NTuple{2,SVector{3,<:Number}}, sx::Integer, sy::Integer, sz::Integer
 # indexed 1 through 8 in the order of (---), (+--), (-+-), (++-), (--+), (+-+), (-++), (+++),
 # where, e.g., (+--) indicates the corner at the +x, -y, -z corner.
 function corner_bits(vxl::NTuple{2,SVector{3,<:Number}},  # two ends of solid diagonal of voxel
-                     nout::SVector{3,<:Real}, # unit outward normal of plane
-                     nr₀::Real)  # equation of plane: nout⋅(r - r₀) = 0, or nout⋅r = nr₀
+                     nout::SVector{3,<:Number}, # unit outward normal of plane
+                     nr₀::Number)  # equation of plane: nout⋅(r - r₀) = 0, or nout⋅r = nr₀
     cbits = 0x00
     bit = 0x01
     n_on = 0
@@ -66,7 +66,7 @@ function edgedir_quadsect(cbits::UInt8)
 end
 
 # Return the volume fraction when the plane croses a set of four parallel edges.
-function rvol_quadsect(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Real}, nr₀, cbits::UInt8)
+function rvol_quadsect(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Number}, nr₀, cbits::UInt8)
     w = edgedir_quadsect(cbits)
     ∆w = vxl[P][w] - vxl[N][w]
 
@@ -87,12 +87,20 @@ end
 #
 # Assume count_ones(cbits) ≤ 4.  Othewise, call this function with flipped nout, nr₀,
 # cbits.
-function rvol_gensect(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Real}, nr₀::Real, cbits::UInt8)
+function rvol_gensect(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Number}, nr₀::Number, cbits::UInt8)
     s = (nout.<0) .+ 1
     c = corner(vxl, s[X], s[Y], s[Z])  # corner coordinates
     ∆ = vxl[P] - vxl[N]  # vxl edges
     nc = nout .* c
-    rmax, rmid, rmin =  abs.(((nr₀-sum(nc)) .+ nc) ./ nout - c) ./ ∆ # (lengths from corner to intercetps) / (voxel edges)
+
+    # (lengths from corner to intercepts) / (voxel edges).  Components where nout is zero
+    # have intercept length Inf; produce that Inf with ifelse instead of dividing by zero,
+    # because dividing an active variable by zero would propagate NaN derivatives through
+    # automatic differentiation (the Inf components are constant, with zero derivative).
+    n0 = nout .== 0
+    nout′ = ifelse.(n0, one.(nout), nout)
+    r = abs.(((nr₀-sum(nc)) .+ nc) ./ nout′ - c) ./ ∆
+    rmax, rmid, rmin = ifelse.(n0, oftype.(r, Inf), r)
 
     # nx, ny, nz = nout
     # sx, sy, sz = ((nx≥0 ? N : P), (ny≥0 ? N : P), (nz≥0 ? N : P))  # signs of corner
@@ -142,7 +150,7 @@ half-space is described by the boundary plane.  The boundary plane is described 
 outward normal vector `nout = [nx, ny, nz]` and a point `r₀ = [rx, ry, rz]` on the plane.
 `nout` does not have to be normalized.
 """
-function volfrac(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Real}, r₀::SVector{3,<:Real})
+function volfrac(vxl::NTuple{2,SVector{3,<:Number}}, nout::SVector{3,<:Number}, r₀::SVector{3,<:Number})
     nr₀ = nout⋅r₀
     cbits, n_on = corner_bits(vxl, nout, nr₀)
     n_in = count_ones(cbits)  # number of corners contained
@@ -167,7 +175,7 @@ end
 # - Turn the nout and r₀ into 3D vectors on the xy-plane.
 # - Turn the pixel into a 3D voxel whose base is the pixel and the height is 1.
 # - Pass these 3D objects to volfrac() for 3D.
-volfrac(vxl::NTuple{2,SVector{2,<:Number}}, nout::SVector{2,<:Real}, r₀::SVector{2,<:Real}) =
+volfrac(vxl::NTuple{2,SVector{2,<:Number}}, nout::SVector{2,<:Number}, r₀::SVector{2,<:Number}) =
     volfrac((SVector(vxl[N][1], vxl[N][2], 0), SVector(vxl[P][1], vxl[P][2], 1)),
             SVector(nout[1], nout[2], 0),
             SVector(r₀[1], r₀[2], 0))
@@ -179,7 +187,7 @@ volfrac(vxl::NTuple{2,SVector{2,<:Number}}, nout::SVector{2,<:Real}, r₀::SVect
 #
 # volfrac() for 1D can be implemented from scratch without calling volfrac() for 3D, but
 # let's keep it this way for now.
-volfrac(vxl::NTuple{2,SVector{1,<:Number}}, nout::SVector{1,<:Real}, r₀::SVector{1,<:Real}) =
+volfrac(vxl::NTuple{2,SVector{1,<:Number}}, nout::SVector{1,<:Number}, r₀::SVector{1,<:Number}) =
     volfrac((SVector(0, 0, vxl[N][1]), SVector(1, 1, vxl[P][1])),
             SVector(0, 0, nout[1]),
             SVector(0, 0, r₀[1]))

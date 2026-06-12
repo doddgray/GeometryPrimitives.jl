@@ -21,6 +21,11 @@ using StaticArrays
 using Test
 import Reactant, Enzyme, FiniteDifferences
 
+# The objectives below index the traced parameter vector (p[1], p[2], ...) to build
+# StaticArrays; each such getindex creates a TracedRNumber, which is exactly what we want
+# during tracing, so allow it.
+Reactant.allowscalar(true)
+
 # Scalar objectives p::AbstractVector -> Real, differentiable w.r.t. p.
 # Each constructs a shape from p (exercising traced shape construction) or evaluates at a
 # traced point.

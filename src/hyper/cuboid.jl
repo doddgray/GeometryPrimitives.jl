@@ -12,43 +12,43 @@ export Cuboid
 # each row of Cuboid.p is orthogononal to two cuboid axes, and therefore normal to the face
 # spanned by the two cuboid axes.  (Note that the rows of Cuboid.p are not unit normals to
 # the faces, becuase they are not unit vectors.)
-struct Cuboid{N,N²,T<:Real} <: Shape{N,N²}
+struct Cuboid{N,N²,T<:Number} <: Shape{N,N²}
     c::SVector{N,T}  # center of cuboid
     r::SVector{N,T}  # "radii" (semi-axes) in axis directions
     p::SMatrix{N,N,T,N²}  # projection matrix to cuboid coordinates
     Cuboid{N,N²,T}(c,r,p) where {N,N²,T} = new(c,r,p)  # suppress default outer constructor
 end
 
-Cuboid{N,N²}(c::SVector{N,<:Real}, r::SVector{N,<:Real}, p::SMatrix{N,N,<:Real}) where {N,N²} =
+Cuboid{N,N²}(c::SVector{N,<:Number}, r::SVector{N,<:Number}, p::SMatrix{N,N,<:Number}) where {N,N²} =
     (T = promote_eltype(eltype(c), eltype(r), eltype(p)); Cuboid{N,N²,T}(c, r, p))
 
-Cuboid(c::SVector{N,<:Real},
-       s::SVector{N,<:Real},
-       axes::SMatrix{N,N,<:Real}=SMatrix{N,N,Float64}(I)
+Cuboid(c::SVector{N,<:Number},
+       s::SVector{N,<:Number},
+       axes::SMatrix{N,N,<:Number}=SMatrix{N,N,Float64}(I)
        ) where {N} =
     Cuboid{N,N*N}(c, 0.5*s, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))))
 
-Cuboid(c::AbstractVector{<:Real},  # center of cuboid
-       s::AbstractVector{<:Real},  # size of cuboid in axis directions
-       axes::AbstractMatrix{<:Real}=Matrix{Float64}(I,length(c),length(c))) =  # columns are axes vectors (each being parallel to two sets of faces in 3D)
+Cuboid(c::AbstractVector{<:Number},  # center of cuboid
+       s::AbstractVector{<:Number},  # size of cuboid in axis directions
+       axes::AbstractMatrix{<:Number}=Matrix{Float64}(I,length(c),length(c))) =  # columns are axes vectors (each being parallel to two sets of faces in 3D)
     (N = length(c); Cuboid(SVector{N}(c), SVector{N}(s), SMatrix{N,N}(axes)))
 
-Cuboid(d::NTuple{2,AbstractVector{<:Real}}) =  # end points of diagonal
+Cuboid(d::NTuple{2,AbstractVector{<:Number}}) =  # end points of diagonal
     Cuboid((d[1]+d[2])/2, abs.(d[2]-d[1]))
 
 Base.:(==)(s1::Cuboid, s2::Cuboid) = s1.c==s2.c && s1.r==s2.r && s1.p==s2.p
 Base.isapprox(s1::Cuboid, s2::Cuboid) = s1.c≈s2.c && s1.r≈s2.r && s1.p≈s2.p
 Base.hash(s::Cuboid, h::UInt) = hash(s.c, hash(s.r, hash(s.p, hash(:Cuboid, h))))
 
-translate(s::Cuboid{N,N²}, ∆::SVector{N,<:Real}) where {N,N²} = Cuboid{N,N²}(s.c + ∆, s.r, s.p)
+translate(s::Cuboid{N,N²}, ∆::SVector{N,<:Number}) where {N,N²} = Cuboid{N,N²}(s.c + ∆, s.r, s.p)
 
-function level(x::SVector{N,<:Real}, s::Cuboid{N}) where {N}
+function level(x::SVector{N,<:Number}, s::Cuboid{N}) where {N}
     d = s.p * (x - s.c)
 
     return 1 - maximum(abs.(d) ./ s.r)
 end
 
-function surfpt_nearby(x::SVector{N,<:Real}, s::Cuboid{N}) where {N}
+function surfpt_nearby(x::SVector{N,<:Number}, s::Cuboid{N}) where {N}
     ax = inv(s.p)  # axes: columns are unit vectors
 
     # Below, the rows of n are the unit normals to the faces of the cuboid.  Appropriate

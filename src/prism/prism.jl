@@ -7,7 +7,7 @@
 
 export Prism
 
-struct Prism{B<:Shape2,T<:Real} <: Shape3
+struct Prism{B<:Shape2,T<:Number} <: Shape3
     c::SVector{3,T}  # prism center
     b::B  # base shape described in prism coordinates (i.e, when translating prism, do not need to translate b)
     h2::T  # height * 0.5
@@ -15,26 +15,26 @@ struct Prism{B<:Shape2,T<:Real} <: Shape3
     Prism{B,T}(c,b,h2,p) where {B,T} = new(c,b,h2,p)  # suppress default outer constructor
 end
 
-Prism{B}(c::SVector{3,<:Real}, b::B, h2::Real, p::SMatrix{3,3,<:Real}) where {B<:Shape2} =
+Prism{B}(c::SVector{3,<:Number}, b::B, h2::Number, p::SMatrix{3,3,<:Number}) where {B<:Shape2} =
     (T = promote_eltype(eltype(c), typeof(h2), eltype(p)); Prism{B,T}(c, b, h2, p))
 
-Prism(c::SVector{3,<:Real},
+Prism(c::SVector{3,<:Number},
       b::B,
-      h::Real=Inf,
-      axes::SMatrix{3,3,<:Real,9}=SMatrix{3,3,Float64}(I)  # columns are axes vectors: first two columns span prism base, and last column is prism axis
+      h::Number=Inf,
+      axes::SMatrix{3,3,<:Number,9}=SMatrix{3,3,Float64}(I)  # columns are axes vectors: first two columns span prism base, and last column is prism axis
       ) where {B<:Shape2} =
     Prism{B}(c, b, 0.5h, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))))
 
-Prism(c::AbstractVector{<:Real}, b::Shape2, h::Real=Inf, axes::AbstractMatrix{<:Real}=Matrix{Float64}(I,length(c),length(c))) =
+Prism(c::AbstractVector{<:Number}, b::Shape2, h::Number=Inf, axes::AbstractMatrix{<:Number}=Matrix{Float64}(I,length(c),length(c))) =
     Prism(SVector{3}(c), b, h, SMatrix{3,3}(axes))
 
 Base.:(==)(s1::Prism, s2::Prism) = s1.c==s2.c && s1.b==s2.b && s1.h2==s2.h2 && s1.p==s2.p
 Base.isapprox(s1::Prism, s2::Prism) = s1.c≈s2.c && s1.b≈s2.b && s1.h2≈s2.h2 && s1.p≈s2.p
 Base.hash(s::Prism, h::UInt) = hash(s.c, hash(s.b, hash(s.h2, hash(s.p, hash(:Prism, h)))))
 
-translate(s::Prism{B}, ∆::SVector{3,<:Real}) where {B} = Prism{B}(s.c + ∆, s.b, s.h2, s.p)
+translate(s::Prism{B}, ∆::SVector{3,<:Number}) where {B} = Prism{B}(s.c + ∆, s.b, s.h2, s.p)
 
-function level(x::SVector{3,<:Real}, s::Prism)
+function level(x::SVector{3,<:Number}, s::Prism)
     y = s.p * (x - s.c)  # coordinates after projection
     ya = y[3]  # scalar: coordinate in axis dimension
     yb = y[SVector(1,2)]  # SVector{2}: coordinate in base dimensions
@@ -42,7 +42,7 @@ function level(x::SVector{3,<:Real}, s::Prism)
     return min(1 - abs(ya)/s.h2, level(yb,s.b))
 end
 
-function surfpt_nearby(x::SVector{3,<:Real}, s::Prism)
+function surfpt_nearby(x::SVector{3,<:Number}, s::Prism)
     ax = s.p'  # prism axes: columns are not only unit vectors, but also orthogonal
 
     y = s.p * (x - s.c)  # x in prism coordinates

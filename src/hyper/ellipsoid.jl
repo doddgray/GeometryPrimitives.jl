@@ -1,24 +1,24 @@
 export Ellipsoid
 
-struct Ellipsoid{N,N²,T<:Real} <: Shape{N,N²}
+struct Ellipsoid{N,N²,T<:Number} <: Shape{N,N²}
     c::SVector{N,T}  # center of ellipsoid
     ri2::SVector{N,T}  # inverse squares of "radii" (semi-axes) in axis directions
     p::SMatrix{N,N,T,N²}  # projection matrix to Ellipsoid coordinates; must be orthonormal (see surfpt_nearby)
     Ellipsoid{N,N²,T}(c,ri2,p) where {N,N²,T} = new(c,ri2,p)  # suppress default outer constructor
 end
 
-Ellipsoid{N,N²}(c::SVector{N,<:Real}, ri2::SVector{N,<:Real}, p::SMatrix{N,N,<:Real}) where {N,N²} =
+Ellipsoid{N,N²}(c::SVector{N,<:Number}, ri2::SVector{N,<:Number}, p::SMatrix{N,N,<:Number}) where {N,N²} =
     (T = promote_eltype(eltype(c), eltype(ri2), eltype(p)); Ellipsoid{N,N²,T}(c, ri2, p))
 
-Ellipsoid(c::SVector{N,<:Real},
-          r::SVector{N,<:Real},
-          axes::SMatrix{N,N,<:Real}=SMatrix{N,N,Float64}(I)
+Ellipsoid(c::SVector{N,<:Number},
+          r::SVector{N,<:Number},
+          axes::SMatrix{N,N,<:Number}=SMatrix{N,N,Float64}(I)
           ) where {N} =
-    Ellipsoid{N,N*N}(c, float.(r).^-2, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))))
+    Ellipsoid{N,N*N}(c, inv.(r).^2, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))))
 
-Ellipsoid(c::AbstractVector{<:Real},  # center of ellipsoid
-          r::AbstractVector{<:Real},  # ""
-          axes::AbstractMatrix{<:Real}=Matrix{Float64}(I,length(c),length(c))) =  # columns are axes vector; assumed orthogonal
+Ellipsoid(c::AbstractVector{<:Number},  # center of ellipsoid
+          r::AbstractVector{<:Number},  # ""
+          axes::AbstractMatrix{<:Number}=Matrix{Float64}(I,length(c),length(c))) =  # columns are axes vector; assumed orthogonal
     (N = length(c); Ellipsoid(SVector{N}(c), SVector{N}(r), SMatrix{N,N}(axes)))
 
 Ellipsoid(s::Cuboid{N,N²}) where {N,N²} = Ellipsoid{N,N²}(s.c, (s.r).^-2, s.p)
@@ -27,11 +27,11 @@ Base.:(==)(s1::Ellipsoid, s2::Ellipsoid) = s1.c==s2.c && s1.ri2==s2.ri2 && s1.p=
 Base.isapprox(s1::Ellipsoid, s2::Ellipsoid) = s1.c≈s2.c && s1.ri2≈s2.ri2 && s1.p≈s2.p
 Base.hash(s::Ellipsoid, h::UInt) = hash(s.c, hash(s.ri2, hash(s.p, hash(:Ellipsoid, h))))
 
-translate(s::Ellipsoid{N,N²}, ∆::SVector{N,<:Real}) where {N,N²} = Ellipsoid{N,N²}(s.c + ∆, s.ri2, s.p)
+translate(s::Ellipsoid{N,N²}, ∆::SVector{N,<:Number}) where {N,N²} = Ellipsoid{N,N²}(s.c + ∆, s.ri2, s.p)
 
-level(x::SVector{N,<:Real}, s::Ellipsoid{N}) where {N} = 1 - √dot((s.p * (x - s.c)).^2, s.ri2)
+level(x::SVector{N,<:Number}, s::Ellipsoid{N}) where {N} = 1 - √dot((s.p * (x - s.c)).^2, s.ri2)
 
-function surfpt_nearby(x::SVector{N,<:Real}, s::Ellipsoid{N}) where {N}
+function surfpt_nearby(x::SVector{N,<:Number}, s::Ellipsoid{N}) where {N}
     if x == s.c
         _m, i = findmax(s.ri2)
         nout = s.p[i,:]  # assume s.p is orthogonal

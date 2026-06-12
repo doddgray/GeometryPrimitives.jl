@@ -5,16 +5,16 @@ export Polygon
 # Assume the followings for the polygon represented by Polygon:
 # - The polygon is convex.
 # - The vertices are listed in the counter-clockwise order around the origin.
-struct Polygon{K,K2,T<:Real} <: Shape2  # K2 = 2K
+struct Polygon{K,K2,T<:Number} <: Shape2  # K2 = 2K
     v::SMatrix{2,K,T,K2}  # vertices
     n::SMatrix{2,K,T,K2}  # direction normals to edges
     Polygon{K,K2,T}(v,n) where {K,K2,T} = new(v,n)  # suppress default outer constructor
 end
 
-Polygon{K,K2}(v::SMatrix{2,K,<:Real}, n::SMatrix{2,K,<:Real}) where {K,K2} =
+Polygon{K,K2}(v::SMatrix{2,K,<:Number}, n::SMatrix{2,K,<:Number}) where {K,K2} =
     (T = promote_eltype(eltype(v), eltype(n)); Polygon{K,K2,T}(v, n))
 
-function Polygon(v::SMatrix{2,K,<:Real}) where {K}
+function Polygon(v::SMatrix{2,K,<:Number}) where {K}
     # Sort the vertices in the counter-clockwise direction
     w = v .- mean(v, dims=Val(2))  # v in center-of-mass coordinates
     ϕ = mod.(atan.(w[2,:], w[1,:]), 2π)  # SVector{K}: angle of vertices between 0 and 2π; `%` does not work for negative angle
@@ -46,12 +46,12 @@ function Polygon(v::SMatrix{2,K,<:Real}) where {K}
     return Polygon{K,2K}(v,n)
 end
 
-Polygon(v::AbstractMatrix{<:Real}) = (K = size(v,2); Polygon(SMatrix{2,K}(v)))
+Polygon(v::AbstractMatrix{<:Number}) = (K = size(v,2); Polygon(SMatrix{2,K}(v)))
 
 # Regular polygon
-function Polygon{K}(c::SVector{2,<:Real},
-                    r::Real,  # distance between center and each vertex
-                    θ::Real=0.0  # angle from +y-direction towards first vertex
+function Polygon{K}(c::SVector{2,<:Number},
+                    r::Number,  # distance between center and each vertex
+                    θ::Number=0.0  # angle from +y-direction towards first vertex
                     ) where {K}
     ∆θ = 2π / K
 
@@ -61,9 +61,9 @@ function Polygon{K}(c::SVector{2,<:Real},
     return Polygon(v)
 end
 
-Polygon{K}(c::AbstractVector{<:Real},  # [x, y]: center of regular polygon
-           r::Real,  # radius: distance from center to vertices
-           θ::Real=0.0  # angle of first vertex
+Polygon{K}(c::AbstractVector{<:Number},  # [x, y]: center of regular polygon
+           r::Number,  # radius: distance from center to vertices
+           θ::Number=0.0  # angle of first vertex
            ) where {K} =
    Polygon{K}(SVector{2}(c), r, θ)
 
@@ -72,7 +72,7 @@ Base.:(==)(s1::Polygon, s2::Polygon) = s1.v==s2.v && s1.n==s2.n  # assume sorted
 Base.isapprox(s1::Polygon, s2::Polygon) = s1.v≈s2.v && s1.n≈s2.n  # assume sorted v
 Base.hash(s::Polygon, h::UInt) = hash(s.v, hash(s.n, hash(:Polygon, h)))
 
-function level(x::SVector{2,<:Real}, s::Polygon)
+function level(x::SVector{2,<:Number}, s::Polygon)
     c = mean(s.v, dims=Val(2))  # center of mass
 
     d = sum(s.n .* (x .- c), dims=Val(1))
@@ -82,7 +82,7 @@ function level(x::SVector{2,<:Real}, s::Polygon)
     return 1 - maximum(d ./ r)
 end
 
-function surfpt_nearby(x::SVector{2,<:Real}, s::Polygon{K}) where {K}
+function surfpt_nearby(x::SVector{2,<:Number}, s::Polygon{K}) where {K}
     # Calculate the signed distances from x to edge lines.
     ∆xe = sum(s.n .* (x .- s.v), dims=Val(1))[1,:]  # SVector{K}: values of equations of edge lines
     abs∆xe = abs.(∆xe)  # SVector{K}
@@ -117,8 +117,9 @@ function surfpt_nearby(x::SVector{2,<:Real}, s::Polygon{K}) where {K}
         end
         nout = normalize(nout)
     else  # cout ≤ 1 or cout ≥ 3
-        cout ≤ 1 || @warn "x = $x is outside $cout edges: too far from polygon with vertices $(s.v); " *
-                            "result could be inaccurate."
+        # For cout ≥ 3, x is too far from the polygon and the result could be inaccurate.
+        # (This case is not warned about, because logging macros expand to try/catch blocks
+        # that reverse-mode AD tools such as Mooncake cannot differentiate through.)
         # Choose the closest edge to x.
         # If cout = 0, all ∆xe are negative, so the largest ∆xe is the smallest in magnitude
         # and corresponds to the closest edge.
@@ -137,7 +138,7 @@ function surfpt_nearby(x::SVector{2,<:Real}, s::Polygon{K}) where {K}
     return surf, nout
 end
 
-translate(s::Polygon{K,K2}, ∆::SVector{2,<:Real}) where {K,K2} = Polygon{K,K2}(s.v .+ ∆, s.n)
+translate(s::Polygon{K,K2}, ∆::SVector{2,<:Number}) where {K,K2} = Polygon{K,K2}(s.v .+ ∆, s.n)
 
 function bounds(s::Polygon)
     l = minimum(s.v, dims=Val(2))[:,1]

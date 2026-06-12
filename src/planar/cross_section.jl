@@ -1,26 +1,26 @@
 export CrossSection
 
-struct CrossSection{S<:Shape3,T<:Real} <: Shape2
+struct CrossSection{S<:Shape3,T<:Number} <: Shape2
     shp::S  # 3D shape
     p::SMatrix{3,3,T,9}  # projection matrix to cross-sectional coordinates; must be orthonormal; 3rd entry of projection is along normal axis
     c::T  # intercept on axis normal to cross section
     CrossSection{S,T}(shp,p,c) where {S,T} = new(shp,p,c)  # suppress default outer constructor
 end
 
-CrossSection{S}(shp::S, p::SMatrix{3,3,<:Real}, c::Real) where {S<:Shape3} =
+CrossSection{S}(shp::S, p::SMatrix{3,3,<:Number}, c::Number) where {S<:Shape3} =
     (T = promote_eltype(eltype(p), typeof(c)); CrossSection{S,T}(shp, p, c))
 
-CrossSection(shp::S, p::SMatrix{3,3,<:Real}, c::Real) where {S<:Shape3} = CrossSection{S}(shp, p, c)
+CrossSection(shp::S, p::SMatrix{3,3,<:Number}, c::Number) where {S<:Shape3} = CrossSection{S}(shp, p, c)
 
 CrossSection(shp::S,
-             n::SVector{3,<:Real},
-             c::Real
+             n::SVector{3,<:Number},
+             c::Number
              ) where {S<:Shape3} =
     (n̂ = normalize(n); CrossSection{S}(shp, [orthoaxes(n̂)... n̂]', c))
 
-CrossSection(shp::Shape3, n::AbstractVector{<:Real}, c::Real) = CrossSection(shp, SVector{3}(n), c)
+CrossSection(shp::Shape3, n::AbstractVector{<:Number}, c::Number) = CrossSection(shp, SVector{3}(n), c)
 
-function (shp::Shape3)(ax::Symbol, c::Real)
+function (shp::Shape3)(ax::Symbol, c::Number)
     ax==:x || ax==:y || ax==:z || @error "ax = $(ax) should be :x or :y or :z."
 
     ind_n̂ = (ax==:x) + 2(ax==:y) + 3(ax==:z)  # ind_n̂ = 1, 2, 3 for ax = :x, :y, :z
@@ -33,15 +33,15 @@ Base.:(==)(s1::CrossSection, s2::CrossSection) = s1.shp==s2.shp && s1.p==s2.p  &
 Base.isapprox(s1::CrossSection, s2::CrossSection) = s1.shp≈s2.shp && s1.p≈s2.p  && s1.c≈s2.c
 Base.hash(s::CrossSection, h::UInt) = hash(s.shp, hash(s.p, hash(s.c, hash(:CrossSection, h))))
 
-coord3d(x::SVector{2,<:Real}, s::CrossSection) = (y = SVector{3}(x[1], x[2], s.c); s.p' * y)
+coord3d(x::SVector{2,<:Number}, s::CrossSection) = (y = SVector{3}(x[1], x[2], s.c); s.p' * y)
 
-level(x::SVector{2,<:Real}, s::CrossSection) = level(coord3d(x,s), s.shp)
+level(x::SVector{2,<:Number}, s::CrossSection) = level(coord3d(x,s), s.shp)
 
-function surfpt_nearby(x::SVector{2,<:Real}, s::CrossSection)
+function surfpt_nearby(x::SVector{2,<:Number}, s::CrossSection)
     @error "surfpt_nearby(x,s) is not supported for s::CrossSection."
 end
 
-translate(s::CrossSection, ∆::SVector{2,<:Real}) = CrossSection(translate(s.shp, coord3d(∆,s)), s.p, s.c)
+translate(s::CrossSection, ∆::SVector{2,<:Number}) = CrossSection(translate(s.shp, coord3d(∆,s)), s.p, s.c)
 
 # This does not create the tightest bounds.  For the tightest bounds, this function should
 # be implemented for CrossSection{S} for each S<:Shape3.

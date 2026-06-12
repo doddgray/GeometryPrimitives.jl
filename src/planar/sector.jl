@@ -2,7 +2,7 @@ export Sector
 
 #= Sector (for a base shape) =#
 
-struct Sector{T<:Real} <: Shape2
+struct Sector{T<:Number} <: Shape2
     c::SVector{2,T}  # center of circle
     r::T  # radius of circle
     ϕ₀::T  # center angle bisecting sector: -π ≤ ϕ₀ < π  (π excluded)
@@ -10,11 +10,11 @@ struct Sector{T<:Real} <: Shape2
     Sector{T}(c,r,ϕ₀,∆ϕ2) where {T} = new(c,r,ϕ₀,∆ϕ2)  # suppress default outer constructor
 end
 
-function Sector(c::AbstractVector{<:Real}, r::Real, ϕ::Real, ∆ϕ::Real)
+function Sector(c::AbstractVector{<:Number}, r::Number, ϕ::Number, ∆ϕ::Number)
     r≥0 || throw(ArgumentError("r = $r must be nonnegative."))
     -2π≤∆ϕ≤2π  || throw(ArgumentError("∆ϕ = $∆ϕ must be between -2π and 2π, inclusive."))
 
-    ϕ₀ = rem(ϕ + ∆ϕ/2, 2π, RoundNearest)  # put ϕ₀ in [-π, π)
+    ϕ₀ = wrap2pi(ϕ + ∆ϕ/2)  # put ϕ₀ in [-π, π]
     ∆ϕ2 = abs(∆ϕ/2)
 
     T = promote_eltype(eltype(c), typeof(r), typeof(ϕ₀), typeof(∆ϕ2))
@@ -25,11 +25,16 @@ Base.:(==)(s1::Sector, s2::Sector) = s1.c==s2.c && s1.r==s2.r && s1.ϕ₀==s2.ϕ
 Base.isapprox(s1::Sector, s2::Sector) = s1.c≈s2.c && s1.r≈s2.r && s1.ϕ₀≈s2.ϕ₀ && s1.∆ϕ2≈s2.∆ϕ2
 Base.hash(s::Sector, h::UInt) = hash(s.c, hash(s.r, hash(s.ϕ₀, hash(s.∆ϕ2, hash(:Sector, h)))))
 
-translate(s::Sector, ∆::SVector{2,<:Real}) = Sector(s.c + ∆, s.r, s.ϕ₀ - s.∆ϕ2, 2s.∆ϕ2)
+translate(s::Sector, ∆::SVector{2,<:Number}) = Sector(s.c + ∆, s.r, s.ϕ₀ - s.∆ϕ2, 2s.∆ϕ2)
 
-distangle(ϕ::Real, ϕ₀:: Real) = rem(ϕ-ϕ₀, 2π, RoundNearest)  # ϕ measured from ϕ₀; result within [-π, π)
+# Wrap an angle to [-π, π], equivalent to rem(δ, 2π, RoundNearest) but written with
+# round() because the rem(::Float64, ::Float64, ::RoundingMode) implementation bitcasts,
+# which reverse-mode AD tools such as Mooncake cannot differentiate through.
+wrap2pi(δ::Number) = δ - 2π*round(δ/(2π))
 
-function level(x::SVector{2,<:Real}, s::Sector)
+distangle(ϕ::Number, ϕ₀:: Number) = wrap2pi(ϕ-ϕ₀)  # ϕ measured from ϕ₀; result within [-π, π]
+
+function level(x::SVector{2,<:Number}, s::Sector)
     d = x - s.c
     ld = norm(d)
     ϕ = ld==0 ? s.ϕ₀ : atan(d[2], d[1])  # angle to x with respect to c
@@ -37,7 +42,7 @@ function level(x::SVector{2,<:Real}, s::Sector)
     return 1 - max(ld/s.r, abs(distangle(ϕ, s.ϕ₀)) / s.∆ϕ2)
 end
 
-function surfpt_nearby(x::SVector{2,<:Real}, s::Sector)
+function surfpt_nearby(x::SVector{2,<:Number}, s::Sector)
     # Basically mimic the same function for Prism, but proceeds in the (ρ,ϕ) domain.
     d = x - s.c
     ld = norm(d)

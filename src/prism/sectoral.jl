@@ -5,24 +5,24 @@ const SectoralPrism{T} = Prism{Sector{T},T}
 # Below, if we called SectoralPrism(c, ...) in the function body, it would call the inner
 # constructor Prism{Sector{T},T}(c, ...), which is not what we want.
 # To call the outer constructor of Prism, we should call Prism(c, ...) instead of SectoralPrism(c, ...).
-function SectoralPrism(c::SVector{3,<:Real},
-                       r::Real,
-                       ϕ::Real,
-                       ∆ϕ::Real,
-                       h::Real=Inf,
-                       a::SVector{3,<:Real}=SVector(0.0,0.0,1.0)
+function SectoralPrism(c::SVector{3,<:Number},
+                       r::Number,
+                       ϕ::Number,
+                       ∆ϕ::Number,
+                       h::Number=Inf,
+                       a::SVector{3,<:Number}=SVector(0.0,0.0,1.0)
                        )
     T = promote_eltype(eltype(c), typeof(r), typeof(ϕ), typeof(∆ϕ), typeof(h), eltype(a))
     â = normalize(SVector{3,T}(a))
     return Prism(SVector{3,T}(c), Sector(SVector(zero(T),zero(T)),r,ϕ,∆ϕ), h, [orthoaxes(â)... â])
 end
 
-SectoralPrism(c::AbstractVector{<:Real},  # center of prism
-              r::Real,  # radius of sectoral base
-              ϕ::Real,  # start angle of sectoral base: 0 ≤ ϕₛ < 2π  (2π excluded)
-              ∆ϕ::Real,  # end angle sectoral base: 0 ≤ ϕₑ-ϕₛ ≤ 2π
-              h::Real=Inf,  # height of prism
-              a::AbstractVector{<:Real}=[0.0,0.0,1.0]) =  # axis direction of prism
+SectoralPrism(c::AbstractVector{<:Number},  # center of prism
+              r::Number,  # radius of sectoral base
+              ϕ::Number,  # start angle of sectoral base: 0 ≤ ϕₛ < 2π  (2π excluded)
+              ∆ϕ::Number,  # end angle sectoral base: 0 ≤ ϕₑ-ϕₛ ≤ 2π
+              h::Number=Inf,  # height of prism
+              a::AbstractVector{<:Number}=[0.0,0.0,1.0]) =  # axis direction of prism
     SectoralPrism(SVector{3}(c), r, ϕ, ∆ϕ, h, SVector{3}(a))
 
 function bounds_ctrcut(s::Prism{<:Sector})
