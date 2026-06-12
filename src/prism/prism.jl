@@ -6,10 +6,10 @@
 # demand is high.
 
 # It is possible to combine Cylinder and Prism by defining a more general prism type that
-# accepts any base shape.  We could use Shape{2} to create a 2D base shape and store it as
+# accepts any base shape.  We could use Shape2 to create a 2D base shape and store it as
 # a base shape.  However there is one problem.  We want to use
 #
-#   surfpt_nearby(x_base::SVector{2}, shape_base::Shape{2})
+#   surfpt_nearby(x_base::SVector{2}, shape_base::Shape2)
 #
 # to find the closest point in the base dimension (such a point is on the side of the prism),
 # and compare the distance to it with the distance from x to the base plane along the axis
@@ -25,131 +25,82 @@
 # ∆x, because the surface point x + ∆x can be easily calculated.  Let's consider fixing this
 # in the future.
 #
-# Hmmm...  Because the surface point is not calculated by adding ∆x to x for Sphere and
+# Hmmm...  Because the surface point is not calculated by adding ∆x to x for Ball and
 # Ellipse, maybe implemeting a function returning ∆x is not a very good idea.  Then, it may
 # not be a bad idea to calculate ∆x by subtracting x from the surface point.  Let's try to
 # implement the general prism.
 
 export Prism
 
-mutable struct Prism{B<:Shape{2},D,T} <: Shape{3,9,D,T}
-    c::SVector{3,T}  # prism center
+mutable struct Prism{B<:Shape2} <: Shape3
+    c::SVector{3,Float64}  # prism center
     b::B  # base shape described in prism coordinates (i.e, when translating prism, do not need to translate b)
-    h2::T  # height * 0.5
-    p::SMatrix{3,3,T,9}  # projection matrix to prism coordinates; must be orthonormal (see surfpt_nearby)
-    data::D  # auxiliary data
-    Prism{B,D,T}(c,b,h2,p,data) where {B,D,T<:Real} = new(c,b,h2,p,data)  # suppress default outer constructor
+    h2::Float64  # height * 0.5
+    p::SMatrix{3,3,Float64,9}  # projection matrix to prism coordinates; must be orthonormal (see surfpt_nearby)
+    Prism{B}(c,b,h2,p) where {B} = new(c,b,h2,p)  # suppress default outer constructor
 end
 
+Prism(c::SVector{3,<:Real},
+      b::B,
+      h::Real=Inf,
+      axes::SMatrix{3,3,<:Real,9}=SMatrix{3,3,Float64}(I)  # columns are axes vectors: first two columns span prism base, and last column is prism axis
+      ) where {B<:Shape2} =
+    Prism{B}(c, b, 0.5h, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))))
 
-# `axes` columns are axes vectors: first two columns span prism base, and last column is prism axis
-# function Prism(c::SVector{3,T}, b::B, h::Real=Inf, axes::SMatrix{3,3,T}=SMatrix{3,3,T}(I), data::D=nothing) where {B<:Shape{2},D,T<:Real}
-function Prism(c::SVector{3,T}, b::B, h::Real=Inf, axes::SMatrix{3,3,T}=SMatrix{3,3,T}([ 1. 0. 0. ; 0. 1. 0. ; 0. 0. 1. ]), data::D=nothing) where {B<:Shape{2},D,T<:Real}
-    @tullio axnorm[i] := axes[i,j]^2 |> sqrt
-    @tullio p_inv[i,j] := axes[i,j] / axnorm[j]
-    # p = inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1))))
-    return Prism{B,D,T}(c, b, 0.5*h, SMatrix{3,3}(inv(p_inv)), data)
-end
+Prism(c::AbstractVector{<:Real}, b::Shape2, h::Real=Inf, axes::AbstractMatrix{<:Real}=Matrix{Float64}(I,length(c),length(c))) =
+    Prism(SVector{3}(c), b, h, SMatrix{3,3}(axes))
 
-Prism(c::AbstractVector{T}, b::Shape{2}, h::Real=Inf, axes::AbstractMatrix{<:Real}=Matrix{T}(I,length(c),length(c)), data=nothing) where T<:Real =
-    Prism(SVector{3}(c), b, h, SMatrix{3,3}(axes), data)
+Base.:(==)(s1::Prism, s2::Prism) = s1.c==s2.c && s1.b==s2.b && s1.h2==s2.h2 && s1.p==s2.p
+Base.isapprox(s1::Prism, s2::Prism) = s1.c≈s2.c && s1.b≈s2.b && s1.h2≈s2.h2 && s1.p≈s2.p
+Base.hash(s::Prism, h::UInt) = hash(s.c, hash(s.b, hash(s.h2, hash(s.p, hash(:Prism, h)))))
 
-Base.:(==)(s1::Prism, s2::Prism) = s1.c==s2.c && s1.b==s2.b && s1.h2==s2.h2 && s1.p==s2.p && s1.data==s2.data
-Base.isapprox(s1::Prism, s2::Prism) = s1.c≈s2.c && s1.b≈s2.b && s1.h2≈s2.h2 && s1.p≈s2.p && s1.data==s2.data
-Base.hash(s::Prism, h::UInt) = hash(s.c, hash(s.b, hash(s.h2, hash(s.p, hash(s.data, hash(:Prism, h))))))
-
-function Base.in(x::SVector{3,<:Real}, s::Prism)
+function level(x::SVector{3,<:Real}, s::Prism)
     y = s.p * (x - s.c)  # coordinates after projection
     ya = y[3]  # scalar: coordinate in axis dimension
-    yb = y[SVector{2}(1,2)]  # SVector{2}: coordinate in base dimensions
+    yb = y[SVector(1,2)]  # SVector{2}: coordinate in base dimensions
 
-    return abs(ya) ≤ s.h2 && yb ∈ s.b
+    return min(1.0 - abs(ya)/s.h2, level(yb,s.b))
 end
 
-function surfpt_nearby(x::SVector{3,T}, s::Prism) where {T<:Real}
-    ax = inv(s.p)  # prism axes: columns are not only unit vectors, but also orthogonal
+function surfpt_nearby(x::SVector{3,<:Real}, s::Prism)
+    ax = s.p'  # prism axes: columns are not only unit vectors, but also orthogonal
 
     y = s.p * (x - s.c)  # x in prism coordinates
     ya = y[3]  # scalar: coordinate in axis dimension
-    # yb = y[SVector{2}(1,2)]  # SVector{2}: coordinates in base dimensions
-    yb = SVector{2}(y[1:2]) #SVector{2}(y[1], y[2])  # SVector{2}: coordinates in base dimensions
+    yb = y[SVector(1,2)]  # SVector{2}: coordinates in base dimensions
 
     la = abs(ya)
     abs∆a = abs(s.h2 - la)  # scalar: distance between x and base point closest to x
-    # surfa = SVector{3}(yb.data..., copysign(s.h2, ya))  # SVector{3}: coordinates of base point closest to x
-    
-    # surfa = SVector{3}(yb[1], yb[2], copysign(s.h2, ya))  # SVector{3}: coordinates of base point closest to x
-    # nouta = SVector{3}(0.0, 0.0, copysign(1.0, ya))  # SVector{3}: outward direction normal at surfa
-    if ya ≥ 0.0 # Zygote works with the two lines above, but ForwardDiff chokes on copysign(s.h2,ya::Dual) 
-        surfa = SVector{3}(yb[1], yb[2], abs(s.h2))
-        nouta = SVector{3}(0.0, 0.0, 1.0)
-    else
-        surfa = SVector{3}(yb[1], yb[2],-abs(s.h2))
-        nouta = SVector{3}(0.0, 0.0, -1.0)
-    end
-    
-    onbnda = abs∆a ≤ Base.rtoldefault(T) * s.h2
+    surfa = SVector(yb..., copysign(s.h2, ya))  # SVector{3}: coordinates of base point closest to x
+    nouta = SVector(0.0, 0.0, copysign(1.0, ya))  # SVector{3}: outward direction normal at surfa
+    onbnda = abs∆a ≤ rtol(s.h2)
     isouta = s.h2<la || onbnda
 
-    # surfb2, noutb2 = surfpt_nearby(yb, s.b)  # (SVector{2}, SVector{2}): side point closest to x and outward direction normal to side there
-    surfb2_noutb2 = surfpt_nearby(yb, s.b)  # (SVector{2}, SVector{2}): side point closest to x and outward direction normal to side there
-    surfb2 = first(surfb2_noutb2)
-    noutb2 = last(surfb2_noutb2)
+    surfb2, noutb2 = surfpt_nearby(yb, s.b)  # (SVector{2}, SVector{2}): side point closest to x and outward direction normal to side there
     abs∆b = norm(surfb2 - yb)  # scalar: distance between x and side point closest to x
-    # surfb = SVector{3}(surfb2.data..., ya)  # SVector{3}: coordinates of side point closest to x
-    # noutb = SVector{3}(noutb2.data..., 0.0)  # SVector{3}: outward direction normal to side surface at surfb
-    surfb = SVector{3}(surfb2[1],surfb2[2], ya)  # SVector{3}: coordinates of side point closest to x
-    noutb = SVector{3}(noutb2[1],noutb2[2], 0.0)  # SVector{3}: outward direction normal to side surface at surfb
+    surfb = SVector(surfb2..., ya)  # SVector{3}: coordinates of side point closest to x
+    noutb = SVector(noutb2..., 0.0)  # SVector{3}: outward direction normal to side surface at surfb
     basesize = abs.((-)(bounds(s.b)...))  # SVector{2}: size of bounding rectancle of base
-    onbndb = abs∆b ≤ Base.rtoldefault(T) * max(basesize.data...)
-    
-    # isoutb = yb∉s.b || onbndb
-    if !in(yb,s.b) || onbndb
-        isoutb = true
-    else
-        isoutb = false
-    end
+    onbndb = abs∆b ≤ rtol(maximum(basesize))
+    isoutb = yb∉s.b || onbndb
 
     if isouta && isoutb  # x outside in both axis and base dimensions
-        surf = SVector{3}(surfb[1], surfb[2], surfa[3])
-        # nout = (onbnda && onbndb) ? (noutb + nouta) : (y - surf)
-        # nout = norm(nout)==Inf ? isinf.(nout) .* sign.(nout) : normalize(nout)  # e.g., return [0,0,-1] for nout = [1,-2,-Inf]
-        if onbnda && onbndb
-            nout0 = noutb + nouta
-        else
-            nout0 = y - surf
-        end
-        if isinf(norm(nout0))
-            nout = map(ni->sign(ni)*isinf(ni),nout0) #isinf.(nout0) .* sign.(nout0)
-        else
-            nout = normalize(nout0)  # e.g., return [0,0,-1] for nout = [1,-2,-Inf]
-        end
+        surf = SVector(surfb[1], surfb[2], surfa[3])
+        nout = (onbnda && onbndb) ? (noutb + nouta) : (y - surf)
+        nout = norm(nout)==Inf ? isinf.(nout) .* sign.(nout) : normalize(nout)  # e.g., return [0,0,-1] for nout = [1,-2,-Inf]
     elseif !isouta && isoutb  # x outside in base dimensions, but inside prism in axis dimension
-        surf = surfb
-        nout = noutb
+        (surf, nout) = (surfb, noutb)
     elseif isouta && !isoutb # x outside in axis dimension, but inside prism in base dimensions
-        surf = surfa
-        nout = nouta
+        (surf, nout) = (surfa, nouta)
     else  # !isouta && !isoutb: x strictly inside prism
-        # (surf, nout) = (abs∆a ≤ abs∆b) ? (surfa, nouta) : (surfb, noutb)
-        if abs∆a ≤ abs∆b
-            surf = surfa
-            nout = nouta
-        else
-            surf = surfb
-            nout = noutb
-        end
+        (surf, nout) = (abs∆a ≤ abs∆b) ? (surfa, nouta) : (surfb, noutb)
     end
 
     return ax*(surf+s.c), ax*nout
 end
 
-# Below, the base shape is not translated because the base geometry is described with
-# respect to the prism coordinates.  See the implementation of Base.in above.
-translate(s::Prism{B,D}, ∆::SVector{3,<:Real}) where {B<:Shape{2},D} = Prism{B,D}(s.c+∆, s.b, s.h2, s.p, s.data)
-
 function bounds(s::Prism)
-    ax = inv(s.p)  # prism axes: columns are not only unit vectors, but also orthogonal
+    ax = s.p'  # prism axes: columns are not only unit vectors, but also orthogonal
     a = ax[:,3]  # SVector{3}
     h2a = s.h2 * a
 
@@ -162,5 +113,5 @@ end
 
 
 include("cylinder.jl")
-include("polygon.jl")
-include("sector.jl")
+include("polygonal.jl")
+include("sectoral.jl")
