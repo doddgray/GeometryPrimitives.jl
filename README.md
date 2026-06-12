@@ -28,3 +28,39 @@ we provide normal-vector computation.
 
 This package was inspired by the geometry utilities in Steven G. Johnson's [Libctl]
 (http://ab-initio.mit.edu/wiki/index.php/Libctl) package.
+
+## Automatic differentiation
+
+The shape types are immutable and parametrized on their numeric element type, and the
+differentiable parts of the API contain no hidden `Float64` conversions, so the package
+composes with Julia automatic-differentiation tools.  The differentiable surface is:
+
+* `level(x, shape)` — w.r.t. the query point `x` and the shape parameters,
+* `surfpt_nearby(x, shape)` (and `normal`) — w.r.t. `x` and the shape parameters,
+* `volfrac(vxl, nout, r₀)` — w.r.t. the voxel corners and the cutting-plane parameters,
+
+where "w.r.t. shape parameters" means differentiating through the shape constructors
+(`Ball`, `Cuboid`, `Ellipsoid`, `Polygon`, `Sector`, `Cylinder`, `PolygonalPrism`,
+`SectoralPrism`, …).
+
+Gradients are tested against finite differences with:
+
+* [Enzyme.jl](https://github.com/EnzymeAD/Enzyme.jl) (forward and reverse mode),
+* [Mooncake.jl](https://github.com/chalk-lab/Mooncake.jl) (reverse mode),
+
+both used directly or through
+[DifferentiationInterface.jl](https://github.com/JuliaDiff/DifferentiationInterface.jl)
+(see `test/grads.jl`), and with
+[Reactant.jl](https://github.com/EnzymeAD/Reactant.jl) for XLA-compiled gradients of the
+branch-free `level` functions (see `test/reactant.jl`; run with `GP_TEST_REACTANT=true`).
+Benchmarks of primal vs. gradient evaluation live in `benchmark/benchmarks.jl`.
+
+Note that `surfpt_nearby` and `volfrac` select branches (nearest face, voxel/plane
+crossing cases, …) based on the input values; their outputs are continuous and piecewise
+differentiable, and AD returns the gradient of the active branch.
+
+## Plotting
+
+Loading [Makie](https://docs.makie.org) together with this package activates a package
+extension that provides `drawshape(shape)` / `drawshape!(shape)` recipes for 2D shapes
+(and 2D cross-sections of 3D shapes via `CrossSection`).

@@ -63,5 +63,11 @@ include("sectoral_prism.jl")
 include("kdtree.jl")
 include("periodize.jl")
 include("vxlcut.jl")
+include("grads.jl")
+
+# Optional: Reactant tests (heavy XLA dependency; see test/reactant.jl for details).
+if get(ENV, "GP_TEST_REACTANT", "false") == "true"
+    include("reactant.jl")
+end
 
 end  # @testset "GeometryPrimitives"
