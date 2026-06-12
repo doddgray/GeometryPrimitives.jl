@@ -1,10 +1,12 @@
-using GeometryPrimitives, StaticArrays, LinearAlgebra, Test
+using GeometryPrimitives
+using StaticArrays
+using LinearAlgebra
 using Random: MersenneTwister
 using Statistics: mean
+using Test
 
-const rtol = Base.rtoldefault(Float64)
-const one⁻ = 1 - rtol  # scale factor slightly less than 1
-const one⁺ = 1 + rtol  # scare factor slightly greater than 1
+const one⁻ = 1 - 1e-8  # scale factor slightly less than 1
+const one⁺ = 1 + 1e-8  # scare factor slightly greater than 1
 const one⁻⁻, one⁺⁺ = 0.9, 1.1  # (scale factor less than 1, scale factor greater than 1)
 
 Base.isapprox(a::Tuple, b::Tuple; kws...) = all(p -> isapprox(p...; kws...), zip(a,b))
@@ -49,14 +51,23 @@ end
 
 @testset "GeometryPrimitives" begin
 
-include("sphere.jl")
-include("box.jl")
+include("ball.jl")
+include("cuboid.jl")
 include("ellipsoid.jl")
-include("cylinder.jl")
+include("cross_section.jl")
 include("polygon.jl")
 include("sector.jl")
+include("cylinder.jl")
+include("polygonal_prism.jl")
+include("sectoral_prism.jl")
 include("kdtree.jl")
 include("periodize.jl")
 include("vxlcut.jl")
+include("grads.jl")
 
+# Optional: Reactant tests (heavy XLA dependency; see test/reactant.jl for details).
+if get(ENV, "GP_TEST_REACTANT", "false") == "true"
+    include("reactant.jl")
 end
+
+end  # @testset "GeometryPrimitives"
