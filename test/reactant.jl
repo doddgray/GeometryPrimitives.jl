@@ -35,6 +35,7 @@ rotmat2(θ) = SMatrix{2,2}(cos(θ), sin(θ), -sin(θ), cos(θ))
 
 f_ball_x(x)       = level(SVector(x[1],x[2],x[3]), Ball(SVector(0.1,0.2,0.3), 1.1))
 f_cuboid_x(x)     = level(SVector(x[1],x[2],x[3]), Cuboid(SVector(0.1,0.2,0.3), SVector(1.0,1.2,1.4)))
+f_cyl_x(x)        = level(SVector(x[1],x[2],x[3]), Cylinder(SVector(0.1,0.2,0.3), 0.8, 1.7))
 f_ball_p(p)       = level(x₀3, Ball(SVector(p[1],p[2],p[3]), p[4]))
 f_cuboid_p(p)     = level(x₀3, Cuboid(SVector(p[1],p[2],p[3]), SVector(p[4],p[5],p[6])))
 f_ellipsoid_p(p)  = level(x₀2, Ellipsoid(SVector(p[1],p[2]), SVector(p[3],p[4]), rotmat2(p[5])))
@@ -42,6 +43,7 @@ f_ellipsoid_p(p)  = level(x₀2, Ellipsoid(SVector(p[1],p[2]), SVector(p[3],p[4]
 const REACTANT_CASES = (
     ("level Ball3 / x",           f_ball_x,      [0.5, 0.6, 0.7]),
     ("level Cuboid3 / x",         f_cuboid_x,    [0.5, 0.6, 0.7]),
+    ("level Cylinder / x",        f_cyl_x,       [0.5, 0.6, 0.7]),
     ("level Ball3 / params",      f_ball_p,      [0.1, 0.2, 0.3, 1.1]),
     ("level Cuboid3 / params",    f_cuboid_p,    [0.1, 0.2, 0.3, 1.0, 1.2, 1.4]),
     ("level Ellipsoid2 / params", f_ellipsoid_p, [0.1, 0.2, 1.0, 1.4, 0.3]),

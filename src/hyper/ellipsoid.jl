@@ -29,7 +29,10 @@ Base.hash(s::Ellipsoid, h::UInt) = hash(s.c, hash(s.ri2, hash(s.p, hash(:Ellipso
 
 translate(s::Ellipsoid{N,N²}, ∆::SVector{N,<:Number}) where {N,N²} = Ellipsoid{N,N²}(s.c + ∆, s.ri2, s.p)
 
-level(x::SVector{N,<:Number}, s::Ellipsoid{N}) where {N} = 1 - √dot((s.p * (x - s.c)).^2, s.ri2)
+# Written with broadcasting and sum() instead of dot() because traced array types
+# (Reactant) support elementwise broadcasting of static arrays but not whole-array
+# arithmetic or dot().
+level(x::SVector{N,<:Number}, s::Ellipsoid{N}) where {N} = 1 - √(sum((s.p * (x .- s.c)).^2 .* s.ri2))
 
 function surfpt_nearby(x::SVector{N,<:Number}, s::Ellipsoid{N}) where {N}
     if x == s.c

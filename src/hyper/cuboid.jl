@@ -26,7 +26,7 @@ Cuboid(c::SVector{N,<:Number},
        s::SVector{N,<:Number},
        axes::SMatrix{N,N,<:Number}=SMatrix{N,N,Float64}(I)
        ) where {N} =
-    Cuboid{N,N*N}(c, 0.5*s, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))))
+    Cuboid{N,N*N}(c, 0.5 .* s, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))))
 
 Cuboid(c::AbstractVector{<:Number},  # center of cuboid
        s::AbstractVector{<:Number},  # size of cuboid in axis directions
@@ -43,7 +43,7 @@ Base.hash(s::Cuboid, h::UInt) = hash(s.c, hash(s.r, hash(s.p, hash(:Cuboid, h)))
 translate(s::Cuboid{N,N²}, ∆::SVector{N,<:Number}) where {N,N²} = Cuboid{N,N²}(s.c + ∆, s.r, s.p)
 
 function level(x::SVector{N,<:Number}, s::Cuboid{N}) where {N}
-    d = s.p * (x - s.c)
+    d = s.p * (x .- s.c)  # broadcasting for traced array types (see ball.jl)
 
     return 1 - maximum(abs.(d) ./ s.r)
 end

@@ -16,7 +16,9 @@ Base.hash(s::Ball, h::UInt) = hash(s.c, hash(s.r, hash(:Ball, h)))
 
 translate(s::Ball{N}, ∆::SVector{N,<:Number}) where {N} = Ball(s.c + ∆, s.r)
 
-level(x::SVector{N,<:Number}, s::Ball{N}) where {N} = 1 - √(sum(abs2, x - s.c) / s.r^2)
+# Written with broadcasting (x .- s.c) because traced array types (Reactant) support
+# elementwise broadcasting of static arrays but not whole-array arithmetic.
+level(x::SVector{N,<:Number}, s::Ball{N}) where {N} = 1 - √(sum(abs2, x .- s.c) / s.r^2)
 
 function surfpt_nearby(x::SVector{N,<:Number}, s::Ball{N,N²,T}) where {N,N²,T}
     nout = x==s.c ? SVector(ntuple(k -> k==1 ? one(T) : zero(T), Val(N))) :  # nout = e₁ for x == s.c

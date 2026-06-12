@@ -35,7 +35,7 @@ Base.hash(s::Prism, h::UInt) = hash(s.c, hash(s.b, hash(s.h2, hash(s.p, hash(:Pr
 translate(s::Prism{B}, ∆::SVector{3,<:Number}) where {B} = Prism{B}(s.c + ∆, s.b, s.h2, s.p)
 
 function level(x::SVector{3,<:Number}, s::Prism)
-    y = s.p * (x - s.c)  # coordinates after projection
+    y = s.p * (x .- s.c)  # coordinates after projection (broadcasting for traced array types)
     ya = y[3]  # scalar: coordinate in axis dimension
     yb = y[SVector(1,2)]  # SVector{2}: coordinate in base dimensions
 
