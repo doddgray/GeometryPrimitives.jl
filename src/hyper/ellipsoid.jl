@@ -1,11 +1,14 @@
 export Ellipsoid
 
-mutable struct Ellipsoid{N,N²} <: Shape{N,N²}
-    c::SVector{N,Float64}  # center of ellipsoid
-    ri2::SVector{N,Float64}  # inverse squares of "radii" (semi-axes) in axis directions
-    p::SMatrix{N,N,Float64,N²}  # projection matrix to Ellipsoid coordinates; must be orthonormal (see surfpt_nearby)
-    Ellipsoid{N,N²}(c,ri2,p) where {N,N²} = new(c,ri2,p)  # suppress default outer constructor
+struct Ellipsoid{N,N²,T<:Real} <: Shape{N,N²}
+    c::SVector{N,T}  # center of ellipsoid
+    ri2::SVector{N,T}  # inverse squares of "radii" (semi-axes) in axis directions
+    p::SMatrix{N,N,T,N²}  # projection matrix to Ellipsoid coordinates; must be orthonormal (see surfpt_nearby)
+    Ellipsoid{N,N²,T}(c,ri2,p) where {N,N²,T} = new(c,ri2,p)  # suppress default outer constructor
 end
+
+Ellipsoid{N,N²}(c::SVector{N,<:Real}, ri2::SVector{N,<:Real}, p::SMatrix{N,N,<:Real}) where {N,N²} =
+    (T = promote_eltype(eltype(c), eltype(ri2), eltype(p)); Ellipsoid{N,N²,T}(c, ri2, p))
 
 Ellipsoid(c::SVector{N,<:Real},
           r::SVector{N,<:Real},
@@ -24,7 +27,9 @@ Base.:(==)(s1::Ellipsoid, s2::Ellipsoid) = s1.c==s2.c && s1.ri2==s2.ri2 && s1.p=
 Base.isapprox(s1::Ellipsoid, s2::Ellipsoid) = s1.c≈s2.c && s1.ri2≈s2.ri2 && s1.p≈s2.p
 Base.hash(s::Ellipsoid, h::UInt) = hash(s.c, hash(s.ri2, hash(s.p, hash(:Ellipsoid, h))))
 
-level(x::SVector{N,<:Real}, s::Ellipsoid{N}) where {N} = 1.0 - √dot((s.p * (x - s.c)).^2, s.ri2)
+translate(s::Ellipsoid{N,N²}, ∆::SVector{N,<:Real}) where {N,N²} = Ellipsoid{N,N²}(s.c + ∆, s.ri2, s.p)
+
+level(x::SVector{N,<:Real}, s::Ellipsoid{N}) where {N} = 1 - √dot((s.p * (x - s.c)).^2, s.ri2)
 
 function surfpt_nearby(x::SVector{N,<:Real}, s::Ellipsoid{N}) where {N}
     if x == s.c

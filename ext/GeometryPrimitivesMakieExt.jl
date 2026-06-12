@@ -1,4 +1,11 @@
-# Define drawshape() and drawshape!() functions.
+# Makie plotting support, loaded automatically when Makie is available.
+# Defines drawshape() and drawshape!() for 2D shapes.
+module GeometryPrimitivesMakieExt
+
+import GeometryPrimitives as GP
+using Makie
+using StaticArrays: SVector
+
 # hres and vres are the number of sampling points in the corresponding Cartesion derctions.
 # They should be at least 2 because range(start, end, length) with start≠end requires length
 # ≥ 2.  The default values of vres and hres are intentionally invalid.
@@ -7,7 +14,7 @@
 end
 
 # Implement drawshape!() for 2D shapes.
-function Makie.plot!(ds::DrawShape{<:Tuple{Shape2}})
+function Makie.plot!(ds::DrawShape{<:Tuple{GP.Shape2}})
     res₀ = ds.res.val  # fields found by examining typeof(ds) and fieldnames(typeof(ds)), etc
     hres = ds.hres.val
     vres = ds.vres.val
@@ -29,14 +36,20 @@ function Makie.plot!(ds::DrawShape{<:Tuple{Shape2}})
 end
 
 # Define the new signature of contour!() used in drawshape!() for 2D shapes.
-function Makie.convert_arguments(P::GridBased, shp::Shape2, res::NTuple{2,Integer})
-    lower, upper = bounds(shp)
+function Makie.convert_arguments(P::GridBased, shp::GP.Shape2, res::NTuple{2,Integer})
+    lower, upper = GP.bounds(shp)
     ∆ = upper - lower
 
-    nw = 1; xs = range(lower[nw] - ϵrel*∆[nw], upper[nw] + rtol(∆[nw]), length=res[nw])
-    nw = 2; ys = range(lower[nw] - ϵrel*∆[nw], upper[nw] + rtol(∆[nw]), length=res[nw])
+    nw = 1; xs = range(lower[nw] - GP.rtol(∆[nw]), upper[nw] + GP.rtol(∆[nw]), length=res[nw])
+    nw = 2; ys = range(lower[nw] - GP.rtol(∆[nw]), upper[nw] + GP.rtol(∆[nw]), length=res[nw])
 
-    lvs = [level(SVector(x,y), shp) for x = xs, y = ys]
+    lvs = [GP.level(SVector(x,y), shp) for x = xs, y = ys]
 
     return convert_arguments(P, xs, ys, lvs)
 end
+
+# Forward the package-level stubs to the recipe-generated functions.
+GP.drawshape(args...; kwargs...) = drawshape(args...; kwargs...)
+GP.drawshape!(args...; kwargs...) = drawshape!(args...; kwargs...)
+
+end # module

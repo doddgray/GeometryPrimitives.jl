@@ -5,11 +5,14 @@ export Polygon
 # Assume the followings for the polygon represented by Polygon:
 # - The polygon is convex.
 # - The vertices are listed in the counter-clockwise order around the origin.
-mutable struct Polygon{K,K2} <: Shape2  # K2 = 2K
-    v::SMatrix{2,K,Float64,K2}  # vertices
-    n::SMatrix{2,K,Float64,K2}  # direction normals to edges
-    Polygon{K,K2}(v,n) where {K,K2} = new(v,n)  # suppress default outer constructor
+struct Polygon{K,K2,T<:Real} <: Shape2  # K2 = 2K
+    v::SMatrix{2,K,T,K2}  # vertices
+    n::SMatrix{2,K,T,K2}  # direction normals to edges
+    Polygon{K,K2,T}(v,n) where {K,K2,T} = new(v,n)  # suppress default outer constructor
 end
+
+Polygon{K,K2}(v::SMatrix{2,K,<:Real}, n::SMatrix{2,K,<:Real}) where {K,K2} =
+    (T = promote_eltype(eltype(v), eltype(n)); Polygon{K,K2,T}(v, n))
 
 function Polygon(v::SMatrix{2,K,<:Real}) where {K}
     # Sort the vertices in the counter-clockwise direction
@@ -17,16 +20,22 @@ function Polygon(v::SMatrix{2,K,<:Real}) where {K}
     ϕ = mod.(atan.(w[2,:], w[1,:]), 2π)  # SVector{K}: angle of vertices between 0 and 2π; `%` does not work for negative angle
     if !issorted(ϕ)
         # Do this only when ϕ is not sorted, because the following uses allocations.
-        ind = MVector{K}(sortperm(ϕ))  # sortperm(::SVector) currently returns Vector, not MVector
-        v = v[:,ind]  # SVector{K}: sorted v
+        ind = SVector{K}(sortperm(ϕ))
+        v = v[:,ind]  # SMatrix{2,K}: sorted v
     end
 
     # Calculate the increases in angle between neighboring edges.
     ∆v = hcat(diff(v, dims=Val(2)), SMatrix{2,1}(v[:,1]-v[:,end]))  # SMatrix{2,K}: edge directions
-    ∆z = ∆v[1,:] + im * ∆v[2,:]  # SVector{K}: edge directions as complex numbers
     icurr = ntuple(identity, Val(K-1))
     inext = ntuple(x->x+1, Val(K-1))
-    ∆ϕ = angle.(∆z[SVector(inext)] ./ ∆z[SVector(icurr)])  # angle returns value between -π and π
+
+    # ∆ϕ[k] is the angle from the edge direction ∆v[:,k] to ∆v[:,k+1], calculated as
+    # atan(∆v[:,k] × ∆v[:,k+1], ∆v[:,k] ⋅ ∆v[:,k+1]) ∈ (-π, π].  (This is the angle of the
+    # complex number ratio ∆z[k+1] / ∆z[k] for ∆z = ∆v[1,:] + im*∆v[2,:], written without
+    # complex arithmetic to remain differentiable by the widest range of AD tools.)
+    ∆vc = ∆v[:,SVector(icurr)]  # SMatrix{2,K-1}: current edge directions
+    ∆vn = ∆v[:,SVector(inext)]  # SMatrix{2,K-1}: next edge directions
+    ∆ϕ = atan.(∆vc[1,:].*∆vn[2,:] .- ∆vc[2,:].*∆vn[1,:], ∆vc[1,:].*∆vn[1,:] .+ ∆vc[2,:].*∆vn[2,:])
 
     # Check all the angle increases are positive.  If they aren't, the polygon is not convex.
     all(∆ϕ .> 0) || throw("v = $v should represent vertices of convex polygon.")
@@ -70,7 +79,7 @@ function level(x::SVector{2,<:Real}, s::Polygon)
     r = sum(s.n .* (s.v .- c), dims=Val(1))
     @assert all(r .> 0)
 
-    return 1.0 - maximum(d ./ r)
+    return 1 - maximum(d ./ r)
 end
 
 function surfpt_nearby(x::SVector{2,<:Real}, s::Polygon{K}) where {K}
@@ -128,7 +137,7 @@ function surfpt_nearby(x::SVector{2,<:Real}, s::Polygon{K}) where {K}
     return surf, nout
 end
 
-translate(s::Polygon, ∆::SVector{2,<:Real}) = (s2 = deepcopy(s); s2.v = s2.v .+ ∆; s2)
+translate(s::Polygon{K,K2}, ∆::SVector{2,<:Real}) where {K,K2} = Polygon{K,K2}(s.v .+ ∆, s.n)
 
 function bounds(s::Polygon)
     l = minimum(s.v, dims=Val(2))[:,1]

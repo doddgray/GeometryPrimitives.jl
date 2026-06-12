@@ -12,18 +12,21 @@ export Cuboid
 # each row of Cuboid.p is orthogononal to two cuboid axes, and therefore normal to the face
 # spanned by the two cuboid axes.  (Note that the rows of Cuboid.p are not unit normals to
 # the faces, becuase they are not unit vectors.)
-mutable struct Cuboid{N,N²} <: Shape{N,N²}
-    c::SVector{N,Float64}  # center of cuboid
-    r::SVector{N,Float64}  # "radii" (semi-axes) in axis directions
-    p::SMatrix{N,N,Float64,N²}  # projection matrix to cuboid coordinates
-    Cuboid{N,N²}(c,r,p) where {N,N²} = new(c,r,p)  # suppress default outer constructor
+struct Cuboid{N,N²,T<:Real} <: Shape{N,N²}
+    c::SVector{N,T}  # center of cuboid
+    r::SVector{N,T}  # "radii" (semi-axes) in axis directions
+    p::SMatrix{N,N,T,N²}  # projection matrix to cuboid coordinates
+    Cuboid{N,N²,T}(c,r,p) where {N,N²,T} = new(c,r,p)  # suppress default outer constructor
 end
+
+Cuboid{N,N²}(c::SVector{N,<:Real}, r::SVector{N,<:Real}, p::SMatrix{N,N,<:Real}) where {N,N²} =
+    (T = promote_eltype(eltype(c), eltype(r), eltype(p)); Cuboid{N,N²,T}(c, r, p))
 
 Cuboid(c::SVector{N,<:Real},
        s::SVector{N,<:Real},
        axes::SMatrix{N,N,<:Real}=SMatrix{N,N,Float64}(I)
        ) where {N} =
-    Cuboid{N,N*N}(c, 0.5s, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))))
+    Cuboid{N,N*N}(c, 0.5*s, inv(axes ./ sqrt.(sum(abs2,axes,dims=Val(1)))))
 
 Cuboid(c::AbstractVector{<:Real},  # center of cuboid
        s::AbstractVector{<:Real},  # size of cuboid in axis directions
@@ -37,10 +40,12 @@ Base.:(==)(s1::Cuboid, s2::Cuboid) = s1.c==s2.c && s1.r==s2.r && s1.p==s2.p
 Base.isapprox(s1::Cuboid, s2::Cuboid) = s1.c≈s2.c && s1.r≈s2.r && s1.p≈s2.p
 Base.hash(s::Cuboid, h::UInt) = hash(s.c, hash(s.r, hash(s.p, hash(:Cuboid, h))))
 
+translate(s::Cuboid{N,N²}, ∆::SVector{N,<:Real}) where {N,N²} = Cuboid{N,N²}(s.c + ∆, s.r, s.p)
+
 function level(x::SVector{N,<:Real}, s::Cuboid{N}) where {N}
     d = s.p * (x - s.c)
 
-    return 1.0 - maximum(abs.(d) ./ s.r)
+    return 1 - maximum(abs.(d) ./ s.r)
 end
 
 function surfpt_nearby(x::SVector{N,<:Real}, s::Cuboid{N}) where {N}
@@ -60,7 +65,7 @@ function surfpt_nearby(x::SVector{N,<:Real}, s::Cuboid{N}) where {N}
     # @assert all(cosθ .≥ 0)
 
     d = s.p * (x - s.c)
-    n = n .* copysign.(1.0,d)  # operation returns SMatrix (reason for leaving n untransposed)
+    n = n .* copysign.(one(eltype(d)),d)  # operation returns SMatrix (reason for leaving n untransposed)
     absd = abs.(d)
     onbnd = abs.(s.r.-absd) .≤ rtol.(s.r)  # basically s.r .≈ absd but faster
     isout = (s.r.<absd) .| onbnd

@@ -5,40 +5,18 @@
 # Supporting skewed prisms is not impossible, but this will be done in the future if the
 # demand is high.
 
-# It is possible to combine Cylinder and Prism by defining a more general prism type that
-# accepts any base shape.  We could use Shape2 to create a 2D base shape and store it as
-# a base shape.  However there is one problem.  We want to use
-#
-#   surfpt_nearby(x_base::SVector{2}, shape_base::Shape2)
-#
-# to find the closest point in the base dimension (such a point is on the side of the prism),
-# and compare the distance to it with the distance from x to the base plane along the axis
-# dimension.  Then, if x is inside the prism for example, then this comparison will tell us
-# which of the base and side is the closest surface from x.  However, this means that we
-# have to take the difference between the output of the above function and x_base to figure
-# out the distance in the base dimension.  Provided that for many Shape types ∆x is first
-# calculated inside surfpt_nearby and x+∆x is returned as the found surface point, having to
-# recover ∆x by subtraction is not only inefficient, but also suffers from loss of
-# significant digits.
-#
-# Maybe we should have not implemented surfpt_nearby, but a different function that returns
-# ∆x, because the surface point x + ∆x can be easily calculated.  Let's consider fixing this
-# in the future.
-#
-# Hmmm...  Because the surface point is not calculated by adding ∆x to x for Ball and
-# Ellipse, maybe implemeting a function returning ∆x is not a very good idea.  Then, it may
-# not be a bad idea to calculate ∆x by subtracting x from the surface point.  Let's try to
-# implement the general prism.
-
 export Prism
 
-mutable struct Prism{B<:Shape2} <: Shape3
-    c::SVector{3,Float64}  # prism center
+struct Prism{B<:Shape2,T<:Real} <: Shape3
+    c::SVector{3,T}  # prism center
     b::B  # base shape described in prism coordinates (i.e, when translating prism, do not need to translate b)
-    h2::Float64  # height * 0.5
-    p::SMatrix{3,3,Float64,9}  # projection matrix to prism coordinates; must be orthonormal (see surfpt_nearby)
-    Prism{B}(c,b,h2,p) where {B} = new(c,b,h2,p)  # suppress default outer constructor
+    h2::T  # height * 0.5
+    p::SMatrix{3,3,T,9}  # projection matrix to prism coordinates; must be orthonormal (see surfpt_nearby)
+    Prism{B,T}(c,b,h2,p) where {B,T} = new(c,b,h2,p)  # suppress default outer constructor
 end
+
+Prism{B}(c::SVector{3,<:Real}, b::B, h2::Real, p::SMatrix{3,3,<:Real}) where {B<:Shape2} =
+    (T = promote_eltype(eltype(c), typeof(h2), eltype(p)); Prism{B,T}(c, b, h2, p))
 
 Prism(c::SVector{3,<:Real},
       b::B,
@@ -54,12 +32,14 @@ Base.:(==)(s1::Prism, s2::Prism) = s1.c==s2.c && s1.b==s2.b && s1.h2==s2.h2 && s
 Base.isapprox(s1::Prism, s2::Prism) = s1.c≈s2.c && s1.b≈s2.b && s1.h2≈s2.h2 && s1.p≈s2.p
 Base.hash(s::Prism, h::UInt) = hash(s.c, hash(s.b, hash(s.h2, hash(s.p, hash(:Prism, h)))))
 
+translate(s::Prism{B}, ∆::SVector{3,<:Real}) where {B} = Prism{B}(s.c + ∆, s.b, s.h2, s.p)
+
 function level(x::SVector{3,<:Real}, s::Prism)
     y = s.p * (x - s.c)  # coordinates after projection
     ya = y[3]  # scalar: coordinate in axis dimension
     yb = y[SVector(1,2)]  # SVector{2}: coordinate in base dimensions
 
-    return min(1.0 - abs(ya)/s.h2, level(yb,s.b))
+    return min(1 - abs(ya)/s.h2, level(yb,s.b))
 end
 
 function surfpt_nearby(x::SVector{3,<:Real}, s::Prism)
@@ -71,15 +51,15 @@ function surfpt_nearby(x::SVector{3,<:Real}, s::Prism)
 
     la = abs(ya)
     abs∆a = abs(s.h2 - la)  # scalar: distance between x and base point closest to x
-    surfa = SVector(yb..., copysign(s.h2, ya))  # SVector{3}: coordinates of base point closest to x
-    nouta = SVector(0.0, 0.0, copysign(1.0, ya))  # SVector{3}: outward direction normal at surfa
+    surfa = SVector(yb[1], yb[2], copysign(s.h2, ya))  # SVector{3}: coordinates of base point closest to x
+    nouta = SVector(zero(ya), zero(ya), copysign(one(ya), ya))  # SVector{3}: outward direction normal at surfa
     onbnda = abs∆a ≤ rtol(s.h2)
     isouta = s.h2<la || onbnda
 
     surfb2, noutb2 = surfpt_nearby(yb, s.b)  # (SVector{2}, SVector{2}): side point closest to x and outward direction normal to side there
     abs∆b = norm(surfb2 - yb)  # scalar: distance between x and side point closest to x
-    surfb = SVector(surfb2..., ya)  # SVector{3}: coordinates of side point closest to x
-    noutb = SVector(noutb2..., 0.0)  # SVector{3}: outward direction normal to side surface at surfb
+    surfb = SVector(surfb2[1], surfb2[2], ya)  # SVector{3}: coordinates of side point closest to x
+    noutb = SVector(noutb2[1], noutb2[2], zero(eltype(noutb2)))  # SVector{3}: outward direction normal to side surface at surfb
     basesize = abs.((-)(bounds(s.b)...))  # SVector{2}: size of bounding rectancle of base
     onbndb = abs∆b ≤ rtol(maximum(basesize))
     isoutb = yb∉s.b || onbndb
@@ -96,7 +76,9 @@ function surfpt_nearby(x::SVector{3,<:Real}, s::Prism)
         (surf, nout) = (abs∆a ≤ abs∆b) ? (surfa, nouta) : (surfb, noutb)
     end
 
-    return ax*(surf+s.c), ax*nout
+    # Transform back from prism coordinates: x = ax*y + s.c.  (The upstream expression
+    # ax*(surf + s.c) is equivalent only when ax = I or s.c = 0.)
+    return ax*surf + s.c, ax*nout
 end
 
 function bounds(s::Prism)
