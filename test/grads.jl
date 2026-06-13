@@ -114,6 +114,14 @@ const SHAPES3D = (
     ("SectoralPrism",  make_sectprism,  10),
 )
 
+# Differentiating *through* the Polygon constructor (sortperm + convexity check) is
+# correct for every backend but very expensive to compile with Enzyme reverse mode, and the
+# cost grows with the vertex count.  The param-gradient groups therefore use a single small
+# polygon (Polygon5) as the representative polygon-construction case and drop the larger
+# Polygon10 and RegPoly8 (which are still covered by the x-gradient groups, where the
+# constructor is not differentiated).
+const PARAM_SHAPES2D = filter(s -> first(s) ∉ ("Polygon10", "RegPoly8"), SHAPES2D)
+
 # δ for the voxel half-width in the volfrac objective: large enough that the voxel straddles
 # the surface for the random query points used here.
 δvec(::Val{N}, T) where {N} = ones(SVector{N,T})
@@ -152,7 +160,7 @@ end
 const GRAD_GROUPS = Dict(
     "x2d"     => () -> run_x_gradients(SHAPES2D, Val(2)),
     "x3d"     => () -> run_x_gradients(SHAPES3D, Val(3)),
-    "param2d" => () -> run_param_gradients(SHAPES2D, Val(2)),
+    "param2d" => () -> run_param_gradients(PARAM_SHAPES2D, Val(2)),
     "param3d" => () -> run_param_gradients(SHAPES3D, Val(3)),
 )
 const GROUP_TITLES = Dict(

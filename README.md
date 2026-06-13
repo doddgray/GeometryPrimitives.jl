@@ -67,12 +67,28 @@ GP_GRAD_GROUPS=param3d julia --project=test test/grads.jl
 
 The default package test suite (`julia --project -e 'using Pkg; Pkg.test()'`) runs the
 `x2d` group as a quick smoke test; set `GP_GRAD_GROUPS=all` (or `GP_TEST_AD_FULL=true`) to
-exercise all four groups, or `GP_TEST_AD=false` to skip them entirely.  (Differentiating
-through the shape constructors makes the `param*` groups the slowest, mostly from AD
-compilation.)  In CI the four groups run as a separate parallel job, one process per group,
-so the core test job sets `GP_TEST_AD=false`.  The backend set can be narrowed with
-`GP_GRAD_BACKENDS` (a subset of `enzyme_reverse,enzyme_forward,mooncake`).  Benchmarks of
-primal vs. gradient evaluation across the backends live in `benchmark/benchmarks.jl`.
+exercise all four groups, or `GP_TEST_AD=false` to skip them entirely.  In CI the four
+groups run as a separate parallel job, one process per group, so the core test job sets
+`GP_TEST_AD=false`.  The backend set can be narrowed with `GP_GRAD_BACKENDS` (a subset of
+`enzyme_reverse,enzyme_forward,mooncake`).  Benchmarks of primal vs. gradient evaluation
+across the backends live in `benchmark/benchmarks.jl`.
+
+### Performance notes
+
+All three reverse/forward backends produce gradients that match finite differences for
+every shape and every differentiable function; the cost is almost entirely *first-call
+compilation*, after which a prepared gradient runs in microseconds (see
+`benchmark/benchmarks.jl`).  Two points worth knowing:
+
+* Differentiating *through* the `Polygon` constructor (which sorts the vertices and checks
+  convexity) is by far the most expensive case to compile, and the cost grows with the
+  vertex count — with Enzyme reverse mode a single 5-vertex polygon-parameter gradient
+  takes a few minutes to compile (Enzyme forward ≈ 10 s, Mooncake ≈ 40 s for the same
+  case).  Differentiating w.r.t. the query point `x` (with the polygon built outside the
+  differentiated function) is cheap.  The `param2d`/`param3d` test groups therefore use a
+  single small polygon as the representative polygon-construction case.
+* For the simple shapes (`Ball`, `Cuboid`, `Ellipsoid`, `Sector` and the non-polygonal
+  prisms) every backend compiles in well under a minute.
 
 Note that `surfpt_nearby` and `volfrac` select branches (nearest face, voxel/plane
 crossing cases, …) based on the input values; their outputs are continuous and piecewise
