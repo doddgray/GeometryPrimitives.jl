@@ -39,10 +39,53 @@ jobs:
             ${{ runner.os }}-
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+        env:
+          GP_TEST_AD: 'false'  # AD gradient tests run in the dedicated `ad` job below
       - uses: julia-actions/julia-processcoverage@v1
       - uses: codecov/codecov-action@v4
         with:
           file: lcov.info
+
+  # Full automatic-differentiation gradient suite.  Split out from the core `test` job
+  # because the Enzyme/Mooncake first-call compilation cost is high; each gradient group
+  # runs in its own process (see test/grads.jl) to keep memory bounded.
+  ad:
+    name: AD gradients - ${{ matrix.group }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - x2d
+          - x3d
+          - param2d
+          - param3d
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+          arch: x64
+      - uses: actions/cache@v4
+        env:
+          cache-name: cache-artifacts
+        with:
+          path: ~/.julia/artifacts
+          key: ${{ runner.os }}-ad-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-ad-${{ env.cache-name }}-
+            ${{ runner.os }}-ad-
+            ${{ runner.os }}-
+      - uses: julia-actions/julia-buildpkg@v1
+      - name: Run gradient group
+        run: |
+          julia --project=test -e '
+            using Pkg
+            Pkg.develop(PackageSpec(path=pwd()))
+            Pkg.instantiate()
+            include("test/grads.jl")'
+        env:
+          GP_GRAD_GROUPS: ${{ matrix.group }}
   # docs:
   #   name: Documentation
   #   runs-on: ubuntu-latest
