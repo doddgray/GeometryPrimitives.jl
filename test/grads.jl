@@ -3,11 +3,27 @@
 # The differentiable API surface is:
 #   - level(x, shape)            w.r.t. x and w.r.t. shape parameters
 #   - surfpt_nearby(x, shape)    w.r.t. x and w.r.t. shape parameters
-#   - volfrac(vxl, nout, r₀)     w.r.t. the voxel corners and the plane parameters
+#   - volfrac(vxl, nout, r₀)     w.r.t. the query point (via surfpt_nearby) and shape params
 #
 # Gradients are computed with Enzyme.jl (forward and reverse mode) and Mooncake.jl
 # (reverse mode) through DifferentiationInterface.jl, and verified against central finite
 # differences (FiniteDifferences.jl).
+#
+# These AD backends have a high first-call compilation latency for this StaticArrays-heavy
+# code (tens of seconds per (shape, function, backend) combination), and the compiled-code
+# caches accumulate within a process.  The tests are therefore organized into four groups
+#
+#     x2d  x3d  param2d  param3d
+#
+# selectable through the GP_GRAD_GROUPS environment variable (comma-separated; default
+# "all").  Running each group in its own Julia process keeps memory bounded and lets CI
+# parallelize, e.g.
+#
+#     GP_GRAD_GROUPS=x2d     julia --project test/grads.jl
+#     GP_GRAD_GROUPS=param3d julia --project test/grads.jl
+#
+# The backend set can likewise be narrowed with GP_GRAD_BACKENDS (comma-separated subset of
+# "enzyme_reverse", "enzyme_forward", "mooncake"; default all three).
 
 using GeometryPrimitives
 using StaticArrays
@@ -19,18 +35,27 @@ using DifferentiationInterface
 using ADTypes: AutoEnzyme, AutoMooncake, AutoFiniteDifferences
 import Enzyme, Mooncake, FiniteDifferences
 
-const GRAD_RNG = MersenneTwister(42)
-
 const FD = AutoFiniteDifferences(; fdm=FiniteDifferences.central_fdm(5, 1))
-const AD_BACKENDS = (
-    "Enzyme reverse" => AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Reverse),
-                                     function_annotation=Enzyme.Const),
-    "Enzyme forward" => AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Forward),
-                                     function_annotation=Enzyme.Const),
-    "Mooncake" => AutoMooncake(; config=nothing),
+
+const ALL_BACKENDS = (
+    "enzyme_reverse" => ("Enzyme reverse",
+                         AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Reverse),
+                                      function_annotation=Enzyme.Const)),
+    "enzyme_forward" => ("Enzyme forward",
+                         AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Forward),
+                                      function_annotation=Enzyme.Const)),
+    "mooncake" => ("Mooncake", AutoMooncake(; config=nothing)),
 )
 
-# Test the gradient of f at p against finite differences for every AD backend.
+# Resolve which backends to run from GP_GRAD_BACKENDS (default: all).
+function selected_backends()
+    want = get(ENV, "GP_GRAD_BACKENDS", "all")
+    keys = want == "all" ? first.(ALL_BACKENDS) : split(want, ',')
+    return [name_be for (key, name_be) in ALL_BACKENDS if key in keys]
+end
+const AD_BACKENDS = selected_backends()
+
+# Test the gradient of f at p against finite differences for every selected AD backend.
 function test_grad(f, p; rtol=1e-5, atol=1e-8)
     g_fd = DifferentiationInterface.gradient(f, FD, p)
     @testset "$name" for (name, backend) in AD_BACKENDS
@@ -89,64 +114,63 @@ const SHAPES3D = (
     ("SectoralPrism",  make_sectprism,  10),
 )
 
-# Scalar objectives
-flevel(sh)  = x -> level(SVector{length(x)}(x), sh)
-fsurfpt(sh) = x -> sum(sum, surfpt_nearby(SVector{length(x)}(x), sh))
-function fvolfrac(sh, ::Val{N}) where {N}
-    return function (x)
-        xs = SVector{N}(x)
-        δ = ones(SVector{N,eltype(x)})
-        r₀, nout = surfpt_nearby(xs, sh)
-        return volfrac((xs - δ, xs + δ), nout, r₀)
+# δ for the voxel half-width in the volfrac objective: large enough that the voxel straddles
+# the surface for the random query points used here.
+δvec(::Val{N}, T) where {N} = ones(SVector{N,T})
+
+#= Test groups =#
+function run_x_gradients(shapes, ::Val{N}) where {N}
+    rng = MersenneTwister(42)
+    @testset "$name" for (name, make, np) in shapes
+        sh = make(rand(rng, np))
+        x = rand(rng, N)
+        @testset "level"   test_grad(x -> level(SVector{N}(x), sh), x)
+        @testset "surfpt"  test_grad(x -> sum(sum, surfpt_nearby(SVector{N}(x), sh)), x)
+        @testset "volfrac" test_grad(x -> begin
+            xs = SVector{N}(x)
+            r₀, nout = surfpt_nearby(xs, sh)
+            volfrac((xs - δvec(Val(N),eltype(x)), xs + δvec(Val(N),eltype(x))), nout, r₀)
+        end, x)
     end
 end
 
+function run_param_gradients(shapes, ::Val{N}) where {N}
+    rng = MersenneTwister(7)
+    @testset "$name" for (name, make, np) in shapes
+        x₀ = SVector{N}(rand(rng, N))
+        p = rand(rng, np)
+        @testset "level"   test_grad(p -> level(x₀, make(p)), p)
+        @testset "surfpt"  test_grad(p -> sum(sum, surfpt_nearby(x₀, make(p))), p)
+        @testset "volfrac" test_grad(p -> begin
+            r₀, nout = surfpt_nearby(x₀, make(p))
+            δ = δvec(Val(N), eltype(p))
+            volfrac((x₀ - δ, x₀ + δ), nout, r₀)
+        end, p)
+    end
+end
+
+const GRAD_GROUPS = Dict(
+    "x2d"     => () -> run_x_gradients(SHAPES2D, Val(2)),
+    "x3d"     => () -> run_x_gradients(SHAPES3D, Val(3)),
+    "param2d" => () -> run_param_gradients(SHAPES2D, Val(2)),
+    "param3d" => () -> run_param_gradients(SHAPES3D, Val(3)),
+)
+const GROUP_TITLES = Dict(
+    "x2d"     => "x-gradients, 2D shapes",
+    "x3d"     => "x-gradients, 3D shapes",
+    "param2d" => "shape-parameter gradients, 2D shapes",
+    "param3d" => "shape-parameter gradients, 3D shapes",
+)
+const GROUP_ORDER = ("x2d", "x3d", "param2d", "param3d")
+
+function selected_groups()
+    want = get(ENV, "GP_GRAD_GROUPS", "all")
+    want == "all" && return GROUP_ORDER
+    return Tuple(g for g in GROUP_ORDER if g in split(want, ','))
+end
+
 @testset verbose = true "AD gradients" begin
-    @testset "x-gradients, 2D shapes" begin
-        @testset "$name" for (name, make, np) in SHAPES2D
-            sh = make(rand(GRAD_RNG, np))
-            x = rand(GRAD_RNG, 2)
-            test_grad(flevel(sh), x)
-            test_grad(fsurfpt(sh), x)
-            test_grad(fvolfrac(sh, Val(2)), x)
-        end
-    end
-
-    @testset "x-gradients, 3D shapes" begin
-        @testset "$name" for (name, make, np) in SHAPES3D
-            sh = make(rand(GRAD_RNG, np))
-            x = rand(GRAD_RNG, 3)
-            test_grad(flevel(sh), x)
-            test_grad(fsurfpt(sh), x)
-            test_grad(fvolfrac(sh, Val(3)), x)
-        end
-    end
-
-    @testset "shape-parameter gradients, 2D shapes" begin
-        @testset "$name" for (name, make, np) in SHAPES2D
-            x₀ = SVector{2}(rand(GRAD_RNG, 2))
-            p = rand(GRAD_RNG, np)
-            test_grad(p -> level(x₀, make(p)), p)
-            test_grad(p -> sum(sum, surfpt_nearby(x₀, make(p))), p)
-            test_grad(p -> begin
-                r₀, nout = surfpt_nearby(x₀, make(p))
-                δ = ones(SVector{2,eltype(p)})
-                volfrac((x₀ - δ, x₀ + δ), nout, r₀)
-            end, p)
-        end
-    end
-
-    @testset "shape-parameter gradients, 3D shapes" begin
-        @testset "$name" for (name, make, np) in SHAPES3D
-            x₀ = SVector{3}(rand(GRAD_RNG, 3))
-            p = rand(GRAD_RNG, np)
-            test_grad(p -> level(x₀, make(p)), p)
-            test_grad(p -> sum(sum, surfpt_nearby(x₀, make(p))), p)
-            test_grad(p -> begin
-                r₀, nout = surfpt_nearby(x₀, make(p))
-                δ = ones(SVector{3,eltype(p)})
-                volfrac((x₀ - δ, x₀ + δ), nout, r₀)
-            end, p)
-        end
+    @testset verbose = true "$(GROUP_TITLES[g])" for g in selected_groups()
+        GRAD_GROUPS[g]()
     end
 end

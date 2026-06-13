@@ -53,7 +53,23 @@ both used directly or through
 (see `test/grads.jl`), and with
 [Reactant.jl](https://github.com/EnzymeAD/Reactant.jl) for XLA-compiled gradients of the
 branch-free `level` functions (see `test/reactant.jl`; run with `GP_TEST_REACTANT=true`).
-Benchmarks of primal vs. gradient evaluation live in `benchmark/benchmarks.jl`.
+
+These AD backends have a high first-call compilation latency for this
+`StaticArrays`-heavy code, so the gradient tests are split into four groups —
+`x2d`, `x3d`, `param2d`, `param3d` (query-point vs. shape-parameter gradients, in 2D
+and 3D) — selectable through the `GP_GRAD_GROUPS` environment variable so that each can be
+run in its own process to keep memory bounded:
+
+```sh
+GP_GRAD_GROUPS=x2d     julia --project=test test/grads.jl
+GP_GRAD_GROUPS=param3d julia --project=test test/grads.jl
+```
+
+The default package test suite (`julia --project -e 'using Pkg; Pkg.test()'`) runs the two
+2D groups; set `GP_GRAD_GROUPS=all` (or `GP_TEST_AD_FULL=true`) to also exercise the 3D
+groups.  The backend set can be narrowed similarly with `GP_GRAD_BACKENDS` (a subset of
+`enzyme_reverse,enzyme_forward,mooncake`).  Benchmarks of primal vs. gradient evaluation
+across the backends live in `benchmark/benchmarks.jl`.
 
 Note that `surfpt_nearby` and `volfrac` select branches (nearest face, voxel/plane
 crossing cases, …) based on the input values; their outputs are continuous and piecewise
