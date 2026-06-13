@@ -65,13 +65,14 @@ GP_GRAD_GROUPS=x2d     julia --project=test test/grads.jl
 GP_GRAD_GROUPS=param3d julia --project=test test/grads.jl
 ```
 
-The default package test suite (`julia --project -e 'using Pkg; Pkg.test()'`) runs the two
-2D groups; set `GP_GRAD_GROUPS=all` (or `GP_TEST_AD_FULL=true`) to also exercise the 3D
-groups, or `GP_TEST_AD=false` to skip them entirely.  (In CI the four groups run as a
-separate parallel job, so the core test job sets `GP_TEST_AD=false`.)  The backend set can
-be narrowed with `GP_GRAD_BACKENDS` (a subset of `enzyme_reverse,enzyme_forward,mooncake`).
-Benchmarks of primal vs. gradient evaluation across the backends live in
-`benchmark/benchmarks.jl`.
+The default package test suite (`julia --project -e 'using Pkg; Pkg.test()'`) runs the
+`x2d` group as a quick smoke test; set `GP_GRAD_GROUPS=all` (or `GP_TEST_AD_FULL=true`) to
+exercise all four groups, or `GP_TEST_AD=false` to skip them entirely.  (Differentiating
+through the shape constructors makes the `param*` groups the slowest, mostly from AD
+compilation.)  In CI the four groups run as a separate parallel job, one process per group,
+so the core test job sets `GP_TEST_AD=false`.  The backend set can be narrowed with
+`GP_GRAD_BACKENDS` (a subset of `enzyme_reverse,enzyme_forward,mooncake`).  Benchmarks of
+primal vs. gradient evaluation across the backends live in `benchmark/benchmarks.jl`.
 
 Note that `surfpt_nearby` and `volfrac` select branches (nearest face, voxel/plane
 crossing cases, …) based on the input values; their outputs are continuous and piecewise

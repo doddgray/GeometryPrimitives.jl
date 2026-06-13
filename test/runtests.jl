@@ -64,13 +64,17 @@ include("kdtree.jl")
 include("periodize.jl")
 include("vxlcut.jl")
 
-# Automatic-differentiation gradient tests.  These have a high AD-compilation cost, so:
-#   - set GP_TEST_AD=false to skip them (CI runs them in a separate parallel `ad` job);
-#   - by default only the 2D groups run; GP_TEST_AD_FULL=true (or GP_GRAD_GROUPS=all) adds
-#     the 3D groups.  GP_GRAD_GROUPS, if already set, is respected as-is.  See grads.jl.
+# Automatic-differentiation gradient tests.  These have a high AD-compilation cost
+# (differentiating through the shape constructors — e.g. the Polygon constructor — is
+# especially heavy for the param2d/param3d groups), so:
+#   - set GP_TEST_AD=false to skip them (CI runs all groups in a separate parallel `ad`
+#     job, one process per group);
+#   - by default only the x2d group runs as a quick smoke test; GP_TEST_AD_FULL=true (or
+#     GP_GRAD_GROUPS=all) runs all four groups.  GP_GRAD_GROUPS, if already set, is
+#     respected as-is.  See grads.jl.
 if get(ENV, "GP_TEST_AD", "true") == "true"
     if !haskey(ENV, "GP_GRAD_GROUPS")
-        ENV["GP_GRAD_GROUPS"] = get(ENV, "GP_TEST_AD_FULL", "false") == "true" ? "all" : "x2d,param2d"
+        ENV["GP_GRAD_GROUPS"] = get(ENV, "GP_TEST_AD_FULL", "false") == "true" ? "all" : "x2d"
     end
     include("grads.jl")
 end
