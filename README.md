@@ -90,6 +90,11 @@ compilation*, after which a prepared gradient runs in microseconds (see
 * For the simple shapes (`Ball`, `Cuboid`, `Ellipsoid`, `Sector` and the non-polygonal
   prisms) every backend compiles in well under a minute.
 
+Once compiled, a single gradient evaluation costs from a few nanoseconds (e.g. `level`) to
+a few microseconds (e.g. `volfrac`), typically a small multiple of the primal evaluation,
+and one to three orders of magnitude faster than the finite-difference gradient.  See
+[`benchmark/results.md`](benchmark/results.md) for a representative table.
+
 Note that `surfpt_nearby` and `volfrac` select branches (nearest face, voxel/plane
 crossing cases, …) based on the input values; their outputs are continuous and piecewise
 differentiable, and AD returns the gradient of the active branch.
