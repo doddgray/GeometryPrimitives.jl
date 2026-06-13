@@ -93,6 +93,11 @@ make_cylinder(p)   = Cylinder(SVector(p[1],p[2],p[3]), p[4], p[5], SVector(p[6],
 make_polyprism(p)  = PolygonalPrism(SVector(p[13],p[14],p[15]),
                                     0.1*SMatrix{2,6}(ntuple(k->p[k], Val(12))) + circpts(6),
                                     p[16], SVector(p[17],p[18],p[19]))
+# Small triangular polygonal prism for the param-gradient group (3 vertices keeps the
+# Polygon-constructor differentiation tractable; see PARAM_SHAPES3D below).
+make_triprism(p)   = PolygonalPrism(SVector(p[7],p[8],p[9]),
+                                    0.1*SMatrix{2,3}(ntuple(k->p[k], Val(6))) + circpts(3),
+                                    p[10], SVector(p[11],p[12],p[13]))
 make_sectprism(p)  = SectoralPrism(SVector(p[1],p[2],p[3]), p[4], p[5], p[6], p[7],
                                    SVector(p[8],p[9],p[10]))
 
@@ -116,11 +121,20 @@ const SHAPES3D = (
 
 # Differentiating *through* the Polygon constructor (sortperm + convexity check) is
 # correct for every backend but very expensive to compile with Enzyme reverse mode, and the
-# cost grows with the vertex count.  The param-gradient groups therefore use a single small
-# polygon (Polygon5) as the representative polygon-construction case and drop the larger
-# Polygon10 and RegPoly8 (which are still covered by the x-gradient groups, where the
-# constructor is not differentiated).
+# cost grows with the vertex count.  The param-gradient groups therefore use small polygons
+# as the representative polygon-construction cases: in 2D a single Polygon5 (dropping the
+# larger Polygon10 and RegPoly8), and in 3D a triangular polygonal prism in place of the
+# 6-gon PolygonalPrism.  The dropped/larger shapes remain covered by the x-gradient groups,
+# where the constructor is built outside the differentiated function.
 const PARAM_SHAPES2D = filter(s -> first(s) ∉ ("Polygon10", "RegPoly8"), SHAPES2D)
+const PARAM_SHAPES3D = (
+    ("Ball3",          make_ball3,       4),
+    ("Cuboid3",        make_cuboid3,    15),
+    ("Ellipsoid3",     make_ellipsoid3,  6),
+    ("Cylinder",       make_cylinder,    8),
+    ("TriPrism",       make_triprism,   13),
+    ("SectoralPrism",  make_sectprism,  10),
+)
 
 # δ for the voxel half-width in the volfrac objective: large enough that the voxel straddles
 # the surface for the random query points used here.
@@ -161,7 +175,7 @@ const GRAD_GROUPS = Dict(
     "x2d"     => () -> run_x_gradients(SHAPES2D, Val(2)),
     "x3d"     => () -> run_x_gradients(SHAPES3D, Val(3)),
     "param2d" => () -> run_param_gradients(PARAM_SHAPES2D, Val(2)),
-    "param3d" => () -> run_param_gradients(SHAPES3D, Val(3)),
+    "param3d" => () -> run_param_gradients(PARAM_SHAPES3D, Val(3)),
 )
 const GROUP_TITLES = Dict(
     "x2d"     => "x-gradients, 2D shapes",
