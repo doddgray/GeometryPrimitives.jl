@@ -102,5 +102,46 @@ differentiable, and AD returns the gradient of the active branch.
 ## Plotting
 
 Loading [Makie](https://docs.makie.org) together with this package activates a package
-extension that provides `drawshape(shape)` / `drawshape!(shape)` recipes for 2D shapes
-(and 2D cross-sections of 3D shapes via `CrossSection`).
+extension that provides `drawshape` / `drawshape!` for every shape type:
+
+* **2D shapes** (`Ball`, `Cuboid`, `Ellipsoid`, `Polygon`, `Sector`, and 2D
+  `CrossSection`s of 3D shapes) are drawn as a filled boundary polygon in an `Axis`.
+* **3D shapes** (`Ball`, `Cuboid`, `Ellipsoid`, `Cylinder`, `PolygonalPrism`,
+  `SectoralPrism`) are drawn as a shaded surface mesh in an `Axis3`.
+
+```julia
+using GeometryPrimitives, CairoMakie    # or GLMakie
+
+drawshape(Sector([0,0], 1.3, deg2rad(20), deg2rad(110)); color=:dodgerblue)  # 2D, new Figure
+drawshape(Cylinder([0,0,0], 0.8, 1.8, [0.25,0.1,1.0]); color=:seagreen)       # 3D, new Figure
+
+# add to an existing axis, and take an axis-aligned 2D slice of a 3D shape:
+fig = Figure(); ax = Axis(fig[1,1]; aspect=DataAspect())
+s = Cuboid([0,0,0], [1.6,1.1,0.8])
+drawshape!(ax, s(:z, 0.0))        # the z = 0 cross section (a CrossSection, i.e. a Shape2)
+```
+
+`drawshape!(ax, s)` adds shape `s` to the given axis (an `Axis` for 2D, an `Axis3` for 3D),
+so several primitives can be combined in one scene.  Rendering needs no external meshing
+package: each primitive is convex, so its boundary is found by bisecting the level-set
+function along rays from an interior point, and the resulting meshes render with the
+pure-CPU [CairoMakie](https://docs.makie.org/stable/explanations/backends/cairomakie)
+backend (handy for headless PNG output).  3D meshes are shaded manually (CairoMakie applies
+no real lighting): flat per-face shading for the polyhedral/extruded shapes and smooth
+radial shading for `Ball`/`Ellipsoid`.
+
+| 2D primitives | 3D primitives |
+|---|---|
+| ![2D primitives](assets/combined_2d.png) | ![3D primitives](assets/combined_3d.png) |
+
+`test/visualize.jl` is an optional test that renders an example of every primitive — a 2D
+plot for each 2D shape, and a 3D perspective view plus axis-aligned 2D slices for each 3D
+shape — saving each as a PNG (under `GP_VIZ_DIR`, default `test/viz_output`).  Run it with
+the bundled `viz` environment:
+
+```sh
+julia --project=viz test/visualize.jl
+```
+
+(or inside the package test suite with `GP_TEST_VIZ=true`, if CairoMakie is available in the
+active environment).

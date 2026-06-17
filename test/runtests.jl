@@ -84,4 +84,11 @@ if get(ENV, "GP_TEST_REACTANT", "false") == "true"
     include("reactant.jl")
 end
 
+# Optional: Makie visualization tests (heavy; require CairoMakie in the active environment,
+# e.g. the `viz` project — see test/visualize.jl).  Run with GP_TEST_VIZ=true, or directly
+# via `julia --project=viz test/visualize.jl`.
+if get(ENV, "GP_TEST_VIZ", "false") == "true"
+    include("visualize.jl")
+end
+
 end  # @testset "GeometryPrimitives"
