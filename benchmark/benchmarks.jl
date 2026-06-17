@@ -64,9 +64,11 @@ make_cases() = begin
         ("level Ellipsoid2 / params",  p -> level(SVector(0.3,0.4),
                                                   Ellipsoid(SVector(p[1],p[2]), SVector(p[3],p[4]), rotmat2(p[5]))),
                                        rand(rng, 5)),
-        ("surfpt Polygon8 / params",   p -> sum(sum, surfpt_nearby(SVector(0.3,0.4),
-                                                  Polygon(0.1*SMatrix{2,8}(ntuple(k->p[k], Val(16))) + circpts(8)))),
-                                       rand(rng, 16)),
+        # Polygon5 (not a larger polygon): differentiating through the Polygon constructor
+        # is the most expensive case to compile, especially with Enzyme reverse mode.
+        ("surfpt Polygon5 / params",   p -> sum(sum, surfpt_nearby(SVector(0.3,0.4),
+                                                  Polygon(0.1*SMatrix{2,5}(ntuple(k->p[k], Val(10))) + circpts(5)))),
+                                       rand(rng, 10)),
         ("surfpt Cylinder / params",   p -> sum(sum, surfpt_nearby(SVector(0.3,0.4,0.5),
                                                   Cylinder(SVector(p[1],p[2],p[3]), p[4], p[5],
                                                            SVector(p[6],p[7],p[8])))),

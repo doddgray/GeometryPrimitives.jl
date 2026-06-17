@@ -191,3 +191,16 @@ volfrac(vxl::NTuple{2,SVector{1,<:Number}}, nout::SVector{1,<:Number}, r₀::SVe
     volfrac((SVector(0, 0, vxl[N][1]), SVector(1, 1, vxl[P][1])),
             SVector(0, 0, nout[1]),
             SVector(0, 0, r₀[1]))
+
+# Fallback for non-`SVector` arguments: convert each vector to an `SVector` and dispatch to
+# the methods above.  Some AD tools (e.g. Zygote) return the outward normal from
+# `surfpt_nearby` as an `MVector` rather than an `SVector` during the forward pass; this
+# method keeps `volfrac` callable on the result without the caller having to re-wrap it.
+# The `SVector{n,<:Number}` methods above are more specific, so they are still used whenever
+# the arguments are already `SVector`s (this method does not recurse).
+function volfrac(vxl::NTuple{2,AbstractVector{<:Number}}, nout::AbstractVector{<:Number}, r₀::AbstractVector{<:Number})
+    n = length(nout)
+    length(vxl[1]) == length(vxl[2]) == length(r₀) == n ||
+        throw(DimensionMismatch("voxel corners, nout, and r₀ must all have the same length"))
+    return volfrac((SVector{n}(vxl[1]), SVector{n}(vxl[2])), SVector{n}(nout), SVector{n}(r₀))
+end

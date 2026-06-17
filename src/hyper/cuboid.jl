@@ -49,19 +49,18 @@ function level(x::SVector{N,<:Number}, s::Cuboid{N}) where {N}
 end
 
 function surfpt_nearby(x::SVector{N,<:Number}, s::Cuboid{N}) where {N}
-    ax = inv(s.p)  # axes: columns are unit vectors
-
     # Below, the rows of n are the unit normals to the faces of the cuboid.  Appropriate
     # signs will be multiplied later.  (Note that the signs will be such that the rows of n
     # are always outward directions, even if x is inside the cuboid.)
-    n = (s.p ./ sqrt.(sum(abs2,s.p,dims=Val(2))[:,1]))  # s.p normalized in row direction
+    rownorm = sqrt.(sum(abs2, s.p, dims=Val(2))[:,1])  # SVector{N}: norms of the rows of s.p
+    n = s.p ./ rownorm  # s.p normalized in row direction
 
-    # Below, θ[i], the angle between ax[:,i] and n[i,:], is always acute (i.e, cosθ .≥ 0),
-    # because the diagonal entries of s.p * ax are positive (= 1) and the diagonal entries
-    # of n * ax are the scaled version of the diagonal entries of s.p * ax with positive
-    # scale factors.
-    cosθ = sum(ax.*n', dims=Val(1))[1,:]  # equivalent to diag(n*ax)
-    # cosθ = diag(n*ax)  # faster than SVector(ntuple(i -> ax[:,i]⋅n[i,:], Val(N)))
+    # Below, θ[i] is the angle between the ith cuboid axis (= ith column of inv(s.p)) and
+    # n[i,:], and is always acute (i.e., cosθ .≥ 0).  Because n = diagm(1 ./ rownorm) * s.p,
+    # we have n * inv(s.p) = diagm(1 ./ rownorm), so cosθ = diag(n * inv(s.p)) = 1 ./ rownorm.
+    # Computing it this way avoids inv(s.p), whose StaticArrays implementation can crash
+    # Enzyme (and yield silently wrong gradients); it is also exact and cheaper.
+    cosθ = 1 ./ rownorm  # SVector{N}: equivalent to diag(n * inv(s.p))
     # @assert all(cosθ .≥ 0)
 
     d = s.p * (x - s.c)

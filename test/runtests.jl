@@ -63,11 +63,32 @@ include("sectoral_prism.jl")
 include("kdtree.jl")
 include("periodize.jl")
 include("vxlcut.jl")
-include("grads.jl")
+
+# Automatic-differentiation gradient tests.  These have a high AD-compilation cost
+# (differentiating through the shape constructors — e.g. the Polygon constructor — is
+# especially heavy for the param2d/param3d groups), so:
+#   - set GP_TEST_AD=false to skip them (CI runs all groups in a separate parallel `ad`
+#     job, one process per group);
+#   - by default only the x2d group runs as a quick smoke test; GP_TEST_AD_FULL=true (or
+#     GP_GRAD_GROUPS=all) runs all four groups.  GP_GRAD_GROUPS, if already set, is
+#     respected as-is.  See grads.jl.
+if get(ENV, "GP_TEST_AD", "true") == "true"
+    if !haskey(ENV, "GP_GRAD_GROUPS")
+        ENV["GP_GRAD_GROUPS"] = get(ENV, "GP_TEST_AD_FULL", "false") == "true" ? "all" : "x2d"
+    end
+    include("grads.jl")
+end
 
 # Optional: Reactant tests (heavy XLA dependency; see test/reactant.jl for details).
 if get(ENV, "GP_TEST_REACTANT", "false") == "true"
     include("reactant.jl")
+end
+
+# Optional: Makie visualization tests (heavy; require CairoMakie in the active environment,
+# e.g. the `viz` project — see test/visualize.jl).  Run with GP_TEST_VIZ=true, or directly
+# via `julia --project=viz test/visualize.jl`.
+if get(ENV, "GP_TEST_VIZ", "false") == "true"
+    include("visualize.jl")
 end
 
 end  # @testset "GeometryPrimitives"

@@ -3,11 +3,27 @@
 # The differentiable API surface is:
 #   - level(x, shape)            w.r.t. x and w.r.t. shape parameters
 #   - surfpt_nearby(x, shape)    w.r.t. x and w.r.t. shape parameters
-#   - volfrac(vxl, nout, r₀)     w.r.t. the voxel corners and the plane parameters
+#   - volfrac(vxl, nout, r₀)     w.r.t. the query point (via surfpt_nearby) and shape params
 #
 # Gradients are computed with Enzyme.jl (forward and reverse mode) and Mooncake.jl
 # (reverse mode) through DifferentiationInterface.jl, and verified against central finite
 # differences (FiniteDifferences.jl).
+#
+# These AD backends have a high first-call compilation latency for this StaticArrays-heavy
+# code (tens of seconds per (shape, function, backend) combination), and the compiled-code
+# caches accumulate within a process.  The tests are therefore organized into four groups
+#
+#     x2d  x3d  param2d  param3d
+#
+# selectable through the GP_GRAD_GROUPS environment variable (comma-separated; default
+# "all").  Running each group in its own Julia process keeps memory bounded and lets CI
+# parallelize, e.g.
+#
+#     GP_GRAD_GROUPS=x2d     julia --project test/grads.jl
+#     GP_GRAD_GROUPS=param3d julia --project test/grads.jl
+#
+# The backend set can likewise be narrowed with GP_GRAD_BACKENDS (comma-separated subset of
+# "enzyme_reverse", "enzyme_forward", "mooncake"; default all three).
 
 using GeometryPrimitives
 using StaticArrays
@@ -19,18 +35,27 @@ using DifferentiationInterface
 using ADTypes: AutoEnzyme, AutoMooncake, AutoFiniteDifferences
 import Enzyme, Mooncake, FiniteDifferences
 
-const GRAD_RNG = MersenneTwister(42)
-
 const FD = AutoFiniteDifferences(; fdm=FiniteDifferences.central_fdm(5, 1))
-const AD_BACKENDS = (
-    "Enzyme reverse" => AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Reverse),
-                                     function_annotation=Enzyme.Const),
-    "Enzyme forward" => AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Forward),
-                                     function_annotation=Enzyme.Const),
-    "Mooncake" => AutoMooncake(; config=nothing),
+
+const ALL_BACKENDS = (
+    "enzyme_reverse" => ("Enzyme reverse",
+                         AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Reverse),
+                                      function_annotation=Enzyme.Const)),
+    "enzyme_forward" => ("Enzyme forward",
+                         AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Forward),
+                                      function_annotation=Enzyme.Const)),
+    "mooncake" => ("Mooncake", AutoMooncake(; config=nothing)),
 )
 
-# Test the gradient of f at p against finite differences for every AD backend.
+# Resolve which backends to run from GP_GRAD_BACKENDS (default: all).
+function selected_backends()
+    want = get(ENV, "GP_GRAD_BACKENDS", "all")
+    keys = want == "all" ? first.(ALL_BACKENDS) : split(want, ',')
+    return [name_be for (key, name_be) in ALL_BACKENDS if key in keys]
+end
+const AD_BACKENDS = selected_backends()
+
+# Test the gradient of f at p against finite differences for every selected AD backend.
 function test_grad(f, p; rtol=1e-5, atol=1e-8)
     g_fd = DifferentiationInterface.gradient(f, FD, p)
     @testset "$name" for (name, backend) in AD_BACKENDS
@@ -68,6 +93,11 @@ make_cylinder(p)   = Cylinder(SVector(p[1],p[2],p[3]), p[4], p[5], SVector(p[6],
 make_polyprism(p)  = PolygonalPrism(SVector(p[13],p[14],p[15]),
                                     0.1*SMatrix{2,6}(ntuple(k->p[k], Val(12))) + circpts(6),
                                     p[16], SVector(p[17],p[18],p[19]))
+# Small triangular polygonal prism for the param-gradient group (3 vertices keeps the
+# Polygon-constructor differentiation tractable; see PARAM_SHAPES3D below).
+make_triprism(p)   = PolygonalPrism(SVector(p[7],p[8],p[9]),
+                                    0.1*SMatrix{2,3}(ntuple(k->p[k], Val(6))) + circpts(3),
+                                    p[10], SVector(p[11],p[12],p[13]))
 make_sectprism(p)  = SectoralPrism(SVector(p[1],p[2],p[3]), p[4], p[5], p[6], p[7],
                                    SVector(p[8],p[9],p[10]))
 
@@ -89,64 +119,121 @@ const SHAPES3D = (
     ("SectoralPrism",  make_sectprism,  10),
 )
 
-# Scalar objectives
-flevel(sh)  = x -> level(SVector{length(x)}(x), sh)
-fsurfpt(sh) = x -> sum(sum, surfpt_nearby(SVector{length(x)}(x), sh))
-function fvolfrac(sh, ::Val{N}) where {N}
-    return function (x)
-        xs = SVector{N}(x)
-        δ = ones(SVector{N,eltype(x)})
-        r₀, nout = surfpt_nearby(xs, sh)
-        return volfrac((xs - δ, xs + δ), nout, r₀)
+# Differentiating *through* the Polygon constructor (sortperm + convexity check) is
+# correct for every backend but very expensive to compile with Enzyme reverse mode, and the
+# cost grows with the vertex count.  The param-gradient groups therefore use small polygons
+# as the representative polygon-construction cases: in 2D a single Polygon5 (dropping the
+# larger Polygon10 and RegPoly8), and in 3D a triangular polygonal prism in place of the
+# 6-gon PolygonalPrism.  The dropped/larger shapes remain covered by the x-gradient groups,
+# where the constructor is built outside the differentiated function.
+const PARAM_SHAPES2D = filter(s -> first(s) ∉ ("Polygon10", "RegPoly8"), SHAPES2D)
+const PARAM_SHAPES3D = (
+    ("Ball3",          make_ball3,       4),
+    ("Cuboid3",        make_cuboid3,    15),
+    ("Ellipsoid3",     make_ellipsoid3,  6),
+    ("Cylinder",       make_cylinder,    8),
+    ("TriPrism",       make_triprism,   13),
+    ("SectoralPrism",  make_sectprism,  10),
+)
+
+# δ for the voxel half-width in the volfrac objective: large enough that the voxel straddles
+# the surface for the random query points used here.
+δvec(::Val{N}, T) where {N} = ones(SVector{N,T})
+
+#= Test groups =#
+function run_x_gradients(shapes, ::Val{N}) where {N}
+    rng = MersenneTwister(42)
+    @testset "$name" for (name, make, np) in shapes
+        sh = make(rand(rng, np))
+        x = rand(rng, N)
+        @testset "level"   test_grad(x -> level(SVector{N}(x), sh), x)
+        @testset "surfpt"  test_grad(x -> sum(sum, surfpt_nearby(SVector{N}(x), sh)), x)
+        @testset "volfrac" test_grad(x -> begin
+            xs = SVector{N}(x)
+            r₀, nout = surfpt_nearby(xs, sh)
+            volfrac((xs - δvec(Val(N),eltype(x)), xs + δvec(Val(N),eltype(x))), nout, r₀)
+        end, x)
     end
 end
 
+function run_param_gradients(shapes, ::Val{N}) where {N}
+    rng = MersenneTwister(7)
+    @testset "$name" for (name, make, np) in shapes
+        x₀ = SVector{N}(rand(rng, N))
+        p = rand(rng, np)
+        @testset "level"   test_grad(p -> level(x₀, make(p)), p)
+        @testset "surfpt"  test_grad(p -> sum(sum, surfpt_nearby(x₀, make(p))), p)
+        @testset "volfrac" test_grad(p -> begin
+            r₀, nout = surfpt_nearby(x₀, make(p))
+            δ = δvec(Val(N), eltype(p))
+            volfrac((x₀ - δ, x₀ + δ), nout, r₀)
+        end, p)
+    end
+end
+
+const GRAD_GROUPS = Dict(
+    "x2d"     => () -> run_x_gradients(SHAPES2D, Val(2)),
+    "x3d"     => () -> run_x_gradients(SHAPES3D, Val(3)),
+    "param2d" => () -> run_param_gradients(PARAM_SHAPES2D, Val(2)),
+    "param3d" => () -> run_param_gradients(PARAM_SHAPES3D, Val(3)),
+)
+const GROUP_TITLES = Dict(
+    "x2d"     => "x-gradients, 2D shapes",
+    "x3d"     => "x-gradients, 3D shapes",
+    "param2d" => "shape-parameter gradients, 2D shapes",
+    "param3d" => "shape-parameter gradients, 3D shapes",
+)
+const GROUP_ORDER = ("x2d", "x3d", "param2d", "param3d")
+
+function selected_groups()
+    want = get(ENV, "GP_GRAD_GROUPS", "all")
+    want == "all" && return GROUP_ORDER
+    return Tuple(g for g in GROUP_ORDER if g in split(want, ','))
+end
+
+# Regression test: surfpt_nearby(x, ::Cuboid) must not depend on inv(s.p).  The StaticArrays
+# matrix inverse there used to make Enzyme crash (and silently return wrong gradients); the
+# implementation now derives the needed quantity (cosθ = 1 ./ rownorm) without inv.  We
+# differentiate surfpt_nearby through the cuboid's projection matrix s.p directly (built via
+# the inner constructor) so that the formerly-present inv(s.p) would be the active operation,
+# and check Enzyme reverse and forward agree with finite differences.
+function run_cuboid_inv_regression()
+    fdm = FiniteDifferences.central_fdm(5, 1)
+    x = SVector(0.5, 0.3, 0.2)
+    # s.p set directly from the parameter vector (near-orthonormal rows).
+    f = function (p)
+        P = SMatrix{3,3}(p[1],p[2],p[3], p[4],p[5],p[6], p[7],p[8],p[9])
+        s = GeometryPrimitives.Cuboid{3,9}(SVector(0.0,0.0,0.0), SVector(0.5,1.0,1.5), P)
+        surf, nout = surfpt_nearby(x, s)
+        return sum(surf) + sum(nout)
+    end
+    p = [1.0,0.05,0.02, 0.03,1.0,0.04, 0.02,0.06,1.0]
+    g_fd = DifferentiationInterface.gradient(f, FD, p)
+    @testset "$name" for (name, backend) in AD_BACKENDS
+        # Mooncake is included for completeness; the bug was Enzyme-specific.
+        g = DifferentiationInterface.gradient(f, backend, p)
+        @test isapprox(g, g_fd; rtol=1e-4, atol=1e-8)
+    end
+
+    # Also exercise the public constructor path (axes -> inv -> s.p) with Enzyme directly.
+    fa = function (a)
+        axes = SMatrix{3,3}(a[1],a[2],a[3], a[4],a[5],a[6], a[7],a[8],a[9])
+        s = Cuboid(SVector(0.0,0.0,0.0), SVector(1.0,2.0,3.0), axes)
+        surf, nout = surfpt_nearby(x, s)
+        return sum(surf) + sum(nout)
+    end
+    a = [1.0,0.2,0.1, 0.1,1.0,0.3, 0.2,0.1,1.0]
+    ga_fd = DifferentiationInterface.gradient(fa, FD, a)
+    @test isapprox(Enzyme.gradient(Enzyme.Reverse, fa, a)[1], ga_fd; rtol=1e-4)
+    @test isapprox(Enzyme.gradient(Enzyme.Forward, fa, a)[1], ga_fd; rtol=1e-4)
+end
+
 @testset verbose = true "AD gradients" begin
-    @testset "x-gradients, 2D shapes" begin
-        @testset "$name" for (name, make, np) in SHAPES2D
-            sh = make(rand(GRAD_RNG, np))
-            x = rand(GRAD_RNG, 2)
-            test_grad(flevel(sh), x)
-            test_grad(fsurfpt(sh), x)
-            test_grad(fvolfrac(sh, Val(2)), x)
-        end
+    @testset "Cuboid surfpt_nearby is inv-free (Enzyme regression)" begin
+        run_cuboid_inv_regression()
     end
 
-    @testset "x-gradients, 3D shapes" begin
-        @testset "$name" for (name, make, np) in SHAPES3D
-            sh = make(rand(GRAD_RNG, np))
-            x = rand(GRAD_RNG, 3)
-            test_grad(flevel(sh), x)
-            test_grad(fsurfpt(sh), x)
-            test_grad(fvolfrac(sh, Val(3)), x)
-        end
-    end
-
-    @testset "shape-parameter gradients, 2D shapes" begin
-        @testset "$name" for (name, make, np) in SHAPES2D
-            x₀ = SVector{2}(rand(GRAD_RNG, 2))
-            p = rand(GRAD_RNG, np)
-            test_grad(p -> level(x₀, make(p)), p)
-            test_grad(p -> sum(sum, surfpt_nearby(x₀, make(p))), p)
-            test_grad(p -> begin
-                r₀, nout = surfpt_nearby(x₀, make(p))
-                δ = ones(SVector{2,eltype(p)})
-                volfrac((x₀ - δ, x₀ + δ), nout, r₀)
-            end, p)
-        end
-    end
-
-    @testset "shape-parameter gradients, 3D shapes" begin
-        @testset "$name" for (name, make, np) in SHAPES3D
-            x₀ = SVector{3}(rand(GRAD_RNG, 3))
-            p = rand(GRAD_RNG, np)
-            test_grad(p -> level(x₀, make(p)), p)
-            test_grad(p -> sum(sum, surfpt_nearby(x₀, make(p))), p)
-            test_grad(p -> begin
-                r₀, nout = surfpt_nearby(x₀, make(p))
-                δ = ones(SVector{3,eltype(p)})
-                volfrac((x₀ - δ, x₀ + δ), nout, r₀)
-            end, p)
-        end
+    @testset verbose = true "$(GROUP_TITLES[g])" for g in selected_groups()
+        GRAD_GROUPS[g]()
     end
 end
