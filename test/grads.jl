@@ -191,7 +191,48 @@ function selected_groups()
     return Tuple(g for g in GROUP_ORDER if g in split(want, ','))
 end
 
+# Regression test: surfpt_nearby(x, ::Cuboid) must not depend on inv(s.p).  The StaticArrays
+# matrix inverse there used to make Enzyme crash (and silently return wrong gradients); the
+# implementation now derives the needed quantity (cosθ = 1 ./ rownorm) without inv.  We
+# differentiate surfpt_nearby through the cuboid's projection matrix s.p directly (built via
+# the inner constructor) so that the formerly-present inv(s.p) would be the active operation,
+# and check Enzyme reverse and forward agree with finite differences.
+function run_cuboid_inv_regression()
+    fdm = FiniteDifferences.central_fdm(5, 1)
+    x = SVector(0.5, 0.3, 0.2)
+    # s.p set directly from the parameter vector (near-orthonormal rows).
+    f = function (p)
+        P = SMatrix{3,3}(p[1],p[2],p[3], p[4],p[5],p[6], p[7],p[8],p[9])
+        s = GeometryPrimitives.Cuboid{3,9}(SVector(0.0,0.0,0.0), SVector(0.5,1.0,1.5), P)
+        surf, nout = surfpt_nearby(x, s)
+        return sum(surf) + sum(nout)
+    end
+    p = [1.0,0.05,0.02, 0.03,1.0,0.04, 0.02,0.06,1.0]
+    g_fd = DifferentiationInterface.gradient(f, FD, p)
+    @testset "$name" for (name, backend) in AD_BACKENDS
+        # Mooncake is included for completeness; the bug was Enzyme-specific.
+        g = DifferentiationInterface.gradient(f, backend, p)
+        @test isapprox(g, g_fd; rtol=1e-4, atol=1e-8)
+    end
+
+    # Also exercise the public constructor path (axes -> inv -> s.p) with Enzyme directly.
+    fa = function (a)
+        axes = SMatrix{3,3}(a[1],a[2],a[3], a[4],a[5],a[6], a[7],a[8],a[9])
+        s = Cuboid(SVector(0.0,0.0,0.0), SVector(1.0,2.0,3.0), axes)
+        surf, nout = surfpt_nearby(x, s)
+        return sum(surf) + sum(nout)
+    end
+    a = [1.0,0.2,0.1, 0.1,1.0,0.3, 0.2,0.1,1.0]
+    ga_fd = DifferentiationInterface.gradient(fa, FD, a)
+    @test isapprox(Enzyme.gradient(Enzyme.Reverse, fa, a)[1], ga_fd; rtol=1e-4)
+    @test isapprox(Enzyme.gradient(Enzyme.Forward, fa, a)[1], ga_fd; rtol=1e-4)
+end
+
 @testset verbose = true "AD gradients" begin
+    @testset "Cuboid surfpt_nearby is inv-free (Enzyme regression)" begin
+        run_cuboid_inv_regression()
+    end
+
     @testset verbose = true "$(GROUP_TITLES[g])" for g in selected_groups()
         GRAD_GROUPS[g]()
     end
