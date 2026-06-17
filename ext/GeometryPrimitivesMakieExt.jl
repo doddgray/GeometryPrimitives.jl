@@ -130,14 +130,17 @@ end
 
 # Add a flat-shaded triangle soup `tris` (a list of (p₁,p₂,p₃)) to `ax`.  Each triangle is
 # given a single color from the Lambert shading of its outward normal (oriented away from
-# `center`), giving crisp faces.
-function _flat_mesh!(ax, tris::Vector{NTuple{3,Point3f}}, center::Point3f, basecolor; kwargs...)
+# `center`), giving crisp faces.  `normals[t]`, if supplied, overrides the geometric normal
+# of triangle `t`; this lets coplanar facets that approximate a curved wall share one normal
+# (e.g. the two triangles of an extruded quad), avoiding diagonal shading stripes.
+function _flat_mesh!(ax, tris::Vector{NTuple{3,Point3f}}, center::Point3f, basecolor;
+                     normals=nothing, kwargs...)
     nt = length(tris)
     verts = Vector{Point3f}(undef, 3nt)
     cols = Vector{RGBAf}(undef, 3nt)
     faces = Vector{GLTriangleFace}(undef, nt)
     for (t, (p1, p2, p3)) in enumerate(tris)
-        n̂ = normalize(cross(p2 - p1, p3 - p1))
+        n̂ = normals === nothing ? normalize(cross(p2 - p1, p3 - p1)) : normals[t]
         dot(n̂, (p1 + p2 + p3)/3 - center) < 0 && (n̂ = -n̂)  # orient outward
         sh = _shade(basecolor, _lambert(n̂))
         i = 3t - 2
@@ -214,28 +217,40 @@ function GP.drawshape!(ax, s::Cuboid{3}; color=:steelblue, kwargs...)
 end
 
 # Flat-faced mesh for a prism: extrude the 2D base boundary along the prism axis, with caps.
+# Returns the triangles, a per-triangle normal (so that both triangles of each extruded side
+# quad share one wall normal — smooth-looking walls for curved bases such as a cylinder or
+# sector arc — and the caps share the axis normal), and an interior reference point for
+# orienting normals outward.  The interior point is the extrusion of the base centroid, not
+# s.c: for a Sector base, s.c is the circle center (the apex), which lies on the boundary.
 function _prism_tris(s::Prism; res::Integer=120)
     base = boundary_loop(s.b; res=res)  # base-plane boundary, ordered CCW
-    length(base) < 3 && return NTuple{3,Point3f}[]
+    tris = NTuple{3,Point3f}[]
+    normals = SVector{3,Float32}[]
     Q = s.p'  # columns are the prism axes (u, v, and prism axis w)
     h = s.h2
     to3(uv, w) = Point3f((s.c + Q*SVector(uv[1], uv[2], w))...)
-    ctr = sum(base) / length(base)  # 2D centroid (interior, since base is convex)
-    tris = NTuple{3,Point3f}[]
+    ctr2d = isempty(base) ? zero(eltype(base)) : sum(base) / length(base)  # interior of convex base
+    center = to3(ctr2d, 0)
+    length(base) < 3 && return tris, normals, center
+    ŵ = SVector{3,Float32}(Q[:,3])  # prism axis (cap normal)
+    cb = to3(ctr2d, -h); ct = to3(ctr2d, h)
     n = length(base)
     for i in 1:n
         j = i % n + 1
         bi, bj = base[i], base[j]
         a = to3(bi, -h); b = to3(bj, -h); c = to3(bj, h); d = to3(bi, h)
-        push!(tris, (a, b, c)); push!(tris, (a, c, d))      # side wall
-        push!(tris, (to3(ctr, -h), b, a))                   # bottom cap
-        push!(tris, (to3(ctr,  h), d, c))                   # top cap
+        nwall = normalize(cross(b - a, d - a))               # shared wall normal for the quad
+        push!(tris, (a, b, c)); push!(normals, nwall)
+        push!(tris, (a, c, d)); push!(normals, nwall)
+        push!(tris, (cb, b, a)); push!(normals, -ŵ)          # bottom cap
+        push!(tris, (ct, d, c)); push!(normals,  ŵ)          # top cap
     end
-    return tris
+    return tris, normals, center
 end
 
 function GP.drawshape!(ax, s::Prism; color=:steelblue, res::Integer=120, kwargs...)
-    return _flat_mesh!(ax, _prism_tris(s; res=res), Point3f(s.c...), color; kwargs...)
+    tris, normals, center = _prism_tris(s; res=res)
+    return _flat_mesh!(ax, tris, center, color; normals=normals, kwargs...)
 end
 
 function GP.drawshape(s::Shape3; azimuth=1.275π, elevation=π/8,
